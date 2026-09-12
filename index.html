@@ -1,0 +1,1444 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="砂王記">
+<meta name="theme-color" content="#100810">
+<meta name="format-detection" content="telephone=no">
+<title>砂王記 -SAND KING SAGA-</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DotGothic16&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body {
+    position:fixed; inset:0; width:100%; height:100%; overflow:hidden; background:#000;
+    font-family:'DotGothic16','MS Gothic',monospace;
+    -webkit-user-select:none; user-select:none; -webkit-tap-highlight-color:transparent;
+    -webkit-touch-callout:none; overscroll-behavior:none; touch-action:none;
+  }
+  #stage { position:absolute; left:0; top:0; transform-origin:top left; }
+  #gl { display:block; image-rendering:pixelated; image-rendering:crisp-edges; }
+  #ui {
+    position:absolute; left:0; top:0; width:320px; height:224px;
+    transform-origin:top left; color:#fff; font-size:10px; line-height:12px;
+    pointer-events:none;
+  }
+  #ui .pe { pointer-events:auto; }
+
+  /* ---- HUD ---- */
+  #hud { position:absolute; left:4px; top:4px; }
+  .plate {
+    background:#100810; border:2px solid #fff; box-shadow:0 0 0 2px #100810;
+    padding:3px 4px;
+  }
+  .bar { width:72px; height:6px; background:#301820; border:1px solid #fff; margin-top:2px; }
+  .bar > i { display:block; height:100%; background:#f04038; }
+  .bar.mp > i { background:#38a0f0; }
+  #lvl { color:#ffd860; }
+
+  #compass {
+    position:absolute; right:4px; top:4px; text-align:center; width:64px;
+  }
+  #arrow { font-size:16px; line-height:16px; color:#ffd860; display:inline-block; }
+  #cdist { color:#c0b0a0; font-size:8px; line-height:10px; }
+
+  /* ---- quest tracker ---- */
+  #quest { position:absolute; right:4px; top:52px; width:128px; }
+  #quest h4 { font-size:9px; color:#ffd860; font-weight:normal; }
+  #quest p { font-size:9px; line-height:11px; color:#e8e0d0; }
+
+  /* ---- message window ---- */
+  #msg {
+    position:absolute; left:8px; right:8px; bottom:8px; min-height:52px;
+    background:#100810; border:2px solid #fff; box-shadow:0 0 0 2px #100810, inset 0 0 0 1px #483040;
+    padding:6px 8px; display:none;
+  }
+  #msgName { color:#ffd860; font-size:9px; }
+  #msgText { font-size:11px; line-height:14px; white-space:pre-wrap; }
+  #msgNext { position:absolute; right:6px; bottom:2px; color:#ffd860; }
+  .blink { animation:bk .6s steps(1) infinite; }
+  @keyframes bk { 50% { opacity:0; } }
+
+  /* ---- toast ---- */
+  #toast {
+    position:absolute; left:0; right:0; top:118px; text-align:center;
+    font-size:11px; color:#ffd860; text-shadow:1px 1px 0 #000, -1px -1px 0 #000; opacity:0;
+  }
+
+  /* ---- damage popups ---- */
+  .pop { position:absolute; font-size:10px; text-shadow:1px 1px 0 #000; }
+
+  /* ---- title / gameover ---- */
+  .screen {
+    position:absolute; left:0; top:0; width:320px; height:224px;
+    background:#0a0610; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; text-align:center;
+  }
+  #title h1 { font-size:26px; line-height:30px; color:#ffd860; font-weight:normal; text-shadow:2px 2px 0 #803010; }
+  #title h2 { font-size:9px; color:#c08050; font-weight:normal; letter-spacing:2px; margin-top:2px; }
+  #title .push { margin-top:22px; font-size:10px; color:#fff; }
+  #title .keys { margin-top:16px; font-size:8px; line-height:11px; color:#907870; }
+  #over h1 { font-size:22px; color:#f04038; font-weight:normal; }
+  #clear h1 { font-size:20px; color:#ffd860; font-weight:normal; line-height:24px;}
+  #clear p, #over p { font-size:10px; color:#e8e0d0; margin-top:10px; line-height:14px;}
+
+  /* ---- コントロールパネル（画面下25%・iOS実寸／2026-09-12 新設） ---- */
+  /* 旧実装は 320x224 のUIレイヤ内にあり、レターボックスで極小化していた。
+     パネルをスケール対象外の固定レイヤへ出し、CSSピクセル実寸で親指に合わせる。
+     幅は3グループを % で固定配分（30+28+38 ＋ padding 4 = 100%）。
+     どの端末幅でも横にはみ出さない。高さは height:min() で行内に収めるので、
+     横持ちでパネルが低くなってもボタンが溢れない。 */
+  #pad {
+    position:fixed; left:0; right:0; bottom:0;
+    height:calc(25vh + env(safe-area-inset-bottom, 0px));
+    min-height:calc(132px + env(safe-area-inset-bottom, 0px));
+    box-sizing:border-box; overflow:hidden;
+    padding:9px 2% calc(9px + env(safe-area-inset-bottom,0px)) 2%;
+    display:none; align-items:stretch; gap:0;
+    background:linear-gradient(#140a12, #090509);
+    border-top:2px solid #483040;
+    touch-action:none; z-index:50;
+  }
+  body.touch #pad { display:flex; }
+
+  /* height:100% を与えないと子の height:min(100%,…) が 0 に潰れる */
+  #padL, #padC, #padR { height:100%; display:flex; align-items:center; }
+  #padL { flex:0 0 30%; justify-content:flex-start; }
+  #padC { flex:0 0 28%; justify-content:center; gap:5%; }
+  #padR { flex:0 0 38%; justify-content:flex-end; gap:4%; }
+
+  #stick {
+    position:relative;
+    height:min(100%, 29vw, 120px); aspect-ratio:1 / 1; border-radius:50%;
+    background:rgba(255,255,255,.09); border:2px solid rgba(255,255,255,.34);
+    box-shadow:inset 0 0 14px rgba(0,0,0,.5);
+  }
+  #knob {
+    position:absolute; left:50%; top:50%; width:42%; height:42%; border-radius:50%;
+    background:rgba(255,255,255,.5); border:2px solid rgba(255,255,255,.75);
+    transform:translate(-50%,-50%); will-change:transform;
+  }
+  .tbtn {
+    aspect-ratio:1 / 1; border-radius:50%;
+    background:rgba(255,255,255,.12); border:2px solid rgba(255,255,255,.42);
+    color:#fff; display:flex; align-items:center; justify-content:center;
+    font-family:inherit; line-height:1; user-select:none;
+    transition:background .06s linear, transform .06s linear;
+  }
+  /* 押した瞬間に沈む打感 */
+  .tbtn.on { background:rgba(255,216,96,.45); border-color:#ffd860; transform:scale(.9); }
+  #bA { height:min(100%, 19vw,   78px); font-size:min(5vw,   21px); }
+  #bB { height:min(86%,  14.6vw, 58px); font-size:min(4vw,   16px); }
+  #bL, #bR { height:min(74%, 11.8vw, 48px); font-size:min(4.2vw, 17px); }
+
+  /* 狭幅端末（iPhone SE 1st = 320px）でも ◀▶ を Apple HIG の 44px 以上に保つ。
+     スティック側の取り分を削って中央へ回す。 */
+  @media (max-width: 360px){
+    #padL { flex:0 0 26%; }
+    #padC { flex:0 0 32%; }
+    #padR { flex:0 0 42%; }
+    #stick    { height:min(100%, 25vw,   120px); }
+    #bL, #bR  { height:min(74%,  13.8vw, 48px); }
+  }
+  /* 保険：どんな配分でもグループ幅を超えさせない */
+  #stick, .tbtn { flex:0 0 auto; max-width:100%; }
+
+  #snd { position:absolute; left:4px; bottom:4px; font-size:8px; color:#907870; }
+  /* HUDプレート下端がちょうど44pxなので、重ならない52pxへ。読めるよう下地を敷く */
+  body.touch #snd {
+    left:4px; right:auto; bottom:auto; top:52px;
+    color:#c0b0a0; background:#100810; border:1px solid #483040; padding:1px 3px;
+  }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <canvas id="gl" width="320" height="224"></canvas>
+</div>
+
+<div id="ui">
+
+  <div id="hud">
+    <div class="plate">
+      <div>タイタン <span id="lvl">Lv1</span></div>
+      <div class="bar"><i id="hpb" style="width:100%"></i></div>
+      <div style="font-size:8px;line-height:10px;color:#c0b0a0;"><span id="hpt">60/60</span></div>
+    </div>
+  </div>
+
+  <div id="compass">
+    <div class="plate">
+      <div id="arrow">▲</div>
+      <div id="cdist">--m</div>
+    </div>
+  </div>
+
+  <div id="quest" class="plate">
+    <h4 id="qt">クエスト</h4>
+    <p id="qb">オアシスの老人に話しかけよう</p>
+  </div>
+
+  <div id="toast"></div>
+
+  <div id="msg">
+    <div id="msgName"></div>
+    <div id="msgText"></div>
+    <div id="msgNext" class="blink">▼</div>
+  </div>
+
+  <div id="snd" class="pe">[ M ] SOUND: ON</div>
+
+  <div id="title" class="screen">
+    <h1>砂王記</h1>
+    <h2>S A N D &nbsp; K I N G &nbsp; S A G A</h2>
+    <div class="push blink">PUSH START / TAP</div>
+    <div class="keys">
+      WASD・矢印 = 移動　　Q / E または ドラッグ = 視点<br>
+      SPACE / J = 斬る　　F = 話す・調べる<br>
+      M = サウンド切替
+    </div>
+  </div>
+
+  <div id="over" class="screen" style="display:none">
+    <h1>Y O U   D I E D</h1>
+    <p>砂が、すべてを飲みこんだ。<br><br>PUSH START でオアシスから再開</p>
+  </div>
+
+  <div id="clear" class="screen" style="display:none">
+    <h1>砂の王を討ち取った！</h1>
+    <p id="clearTxt">--</p>
+    <p style="color:#907870">PUSH START でタイトルへ</p>
+  </div>
+
+</div>
+
+<!-- コントロールパネル：320x224のスケール対象外。画面下25%を占有する -->
+<div id="pad">
+  <div id="padL"><div id="stick"><div id="knob"></div></div></div>
+  <div id="padC">
+    <div id="bL" class="tbtn">◀</div>
+    <div id="bR" class="tbtn">▶</div>
+  </div>
+  <div id="padR">
+    <div id="bB" class="tbtn">話</div>
+    <div id="bA" class="tbtn">斬</div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+"use strict";
+/* =========================================================================
+   砂王記 -SAND KING SAGA-
+   単一HTML / Three.js r128 / メガドライブ仕様 (320x224, 9bit color, dither)
+   ========================================================================= */
+
+/* ---------------------------------------------------------------- 定数 */
+const VW = 320, VH = 224;               // メガドライブ実解像度
+const WORLD = 150;                      // ワールド半径
+const SND = { on:true };
+
+/* ---------------------------------------------------------------- DOM */
+const $ = id => document.getElementById(id);
+const elStage=$('stage'), elUI=$('ui'), elCanvas=$('gl');
+const elTitle=$('title'), elOver=$('over'), elClear=$('clear');
+const elMsg=$('msg'), elMsgName=$('msgName'), elMsgText=$('msgText');
+const elHpb=$('hpb'), elHpt=$('hpt'), elLvl=$('lvl');
+const elQt=$('qt'), elQb=$('qb'), elToast=$('toast');
+const elArrow=$('arrow'), elCdist=$('cdist'), elPad=$('pad'), elSnd=$('snd');
+
+/* ---------------------------------------------------------------- 入力デバイス判定 */
+// resize() がパネル高を必要とするため、ここで先に確定させる
+const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+if(isTouch) document.body.classList.add('touch');
+
+/* ---------------------------------------------------------------- 画面スケーリング */
+/* タッチ環境では画面下25%をコントロールパネルが占有し、残り75%にゲーム画面を収める。
+   縦持ちスマホでは0.5刻みスナップだと横が大きく余るため、実数スケールで幅を使い切る。 */
+function resize(){
+  const w = window.innerWidth, h = window.innerHeight;
+  const padH = isTouch ? Math.round(elPad.getBoundingClientRect().height) : 0;
+  const gh = Math.max(120, h - padH);            // ゲーム表示に使える高さ
+  let s = Math.min(w/VW, gh/VH);
+  if(!isTouch) s = s >= 1 ? Math.floor(s*2)/2 : s;   // PCは0.5刻みでドット感キープ
+  const ox = Math.floor((w - VW*s)/2), oy = Math.floor((gh - VH*s)/2);
+  elStage.style.transform = `translate(${ox}px,${oy}px) scale(${s})`;
+  elUI.style.transform    = `translate(${ox}px,${oy}px) scale(${s})`;
+}
+window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', ()=> setTimeout(resize, 120));
+if(window.visualViewport) window.visualViewport.addEventListener('resize', resize);
+
+/* ---------------------------------------------------------------- 音 (YM2612ごっこ) */
+let actx=null, masterGain=null;
+function initAudio(){
+  if(actx) return;
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if(!AC) return;
+  actx = new AC();
+  masterGain = actx.createGain();
+  masterGain.gain.value = 0.22;
+  masterGain.connect(actx.destination);
+}
+// FM 2オペレータ
+function fm(freq, dur, ratio, index, vol, type){
+  if(!actx || !SND.on) return;
+  const t = actx.currentTime;
+  const car = actx.createOscillator(); car.type = type||'square';
+  const mod = actx.createOscillator(); mod.type = 'sine';
+  const mg  = actx.createGain();
+  const g   = actx.createGain();
+  car.frequency.value = freq;
+  mod.frequency.value = freq * (ratio||2);
+  mg.gain.setValueAtTime(freq*(index||2), t);
+  mg.gain.exponentialRampToValueAtTime(Math.max(1,freq*0.05), t+dur);
+  mod.connect(mg); mg.connect(car.frequency);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(vol||0.3, t+0.008);
+  g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+  car.connect(g); g.connect(masterGain);
+  car.start(t); mod.start(t);
+  car.stop(t+dur+0.02); mod.stop(t+dur+0.02);
+}
+function noise(dur, vol, hp){
+  if(!actx || !SND.on) return;
+  const t = actx.currentTime;
+  const len = Math.floor(actx.sampleRate*dur);
+  const buf = actx.createBuffer(1,len,actx.sampleRate);
+  const d = buf.getChannelData(0);
+  for(let i=0;i<len;i++) d[i] = (Math.random()*2-1)*(1-i/len);
+  const src = actx.createBufferSource(); src.buffer = buf;
+  const f = actx.createBiquadFilter(); f.type='highpass'; f.frequency.value=hp||600;
+  const g = actx.createGain(); g.gain.value = vol||0.3;
+  src.connect(f); f.connect(g); g.connect(masterGain);
+  src.start(t);
+}
+const SE = {
+  slash(){ noise(0.13,0.28,900); fm(520,0.09,3,4,0.16,'sawtooth'); },
+  hit(){   noise(0.10,0.34,300); fm(140,0.12,1.5,6,0.24,'square'); },
+  dmg(){   fm(180,0.22,1.2,8,0.30,'square'); fm(90,0.24,1,6,0.22,'sawtooth'); },
+  pick(){  fm(880,0.07,2,3,0.20); setTimeout(()=>fm(1320,0.10,2,3,0.20),70); },
+  talk(){  fm(660,0.05,2,2,0.12); },
+  level(){ [523,659,784,1047].forEach((f,i)=>setTimeout(()=>fm(f,0.16,2,3,0.22),i*80)); },
+  die(){   [440,392,330,262,196].forEach((f,i)=>setTimeout(()=>fm(f,0.30,1.5,5,0.26,'sawtooth'),i*140)); },
+  heal(){  [523,784,1047].forEach((f,i)=>setTimeout(()=>fm(f,0.18,3,2,0.16),i*70)); },
+  boss(){  noise(0.6,0.4,80); fm(60,0.7,1,10,0.30,'sawtooth'); }
+};
+
+/* --- BGM: ヒジャーズ音階の砂漠ループ --- */
+const BGM = { step:0, next:0, playing:false, mode:'field' };
+const HIJAZ = [0,1,4,5,7,8,11];  // D Eb F# G A Bb C#
+const BASE = 146.83;             // D3
+function nt(deg, oct){ const s = HIJAZ[((deg%7)+7)%7] + 12*(oct||0) + 12*Math.floor(deg/7); return BASE*Math.pow(2, s/12); }
+const FIELD_LEAD = [0,2,3,2,0,-1,0,null,3,4,3,2,0,null,null,null,
+                    4,3,2,3,4,5,4,null,2,0,-1,0,null,null,null,null];
+const BOSS_LEAD  = [0,0,3,0,4,3,2,0,-1,-1,2,-1,3,2,1,-1];
+function bgmTick(){
+  if(!actx || !SND.on || !BGM.playing) return;
+  const spb = BGM.mode==='boss' ? 0.115 : 0.145;
+  while(actx.currentTime + 0.1 > BGM.next){
+    const s = BGM.step;
+    if(BGM.mode==='boss'){
+      const lead = BOSS_LEAD[s % BOSS_LEAD.length];
+      if(lead!==null) fm(nt(lead,1), spb*1.5, 2, 3, 0.11, 'square');
+      if(s%2===0) fm(nt(0,-1), spb*1.4, 1, 2, 0.17, 'sawtooth');
+      if(s%4===2) noise(0.07,0.16,1800);
+      if(s%8===0) noise(0.14,0.26,120);
+    }else{
+      const lead = FIELD_LEAD[s % FIELD_LEAD.length];
+      if(lead!==null && lead!==undefined) fm(nt(lead,1), spb*1.8, 2, 2.2, 0.085, 'square');
+      if(s%4===0) fm(nt(0,-1), spb*3, 1, 1.5, 0.13, 'triangle');
+      if(s%8===4) fm(nt(4,-1), spb*3, 1, 1.5, 0.11, 'triangle');
+      if(s%8===6) noise(0.06,0.10,2200);
+    }
+    BGM.step++; BGM.next += spb;
+  }
+}
+function bgmStart(mode){
+  initAudio(); if(!actx) return;
+  BGM.mode = mode||'field'; BGM.playing = true;
+  BGM.step = 0; BGM.next = actx.currentTime + 0.05;
+}
+function bgmStop(){ BGM.playing = false; }
+
+/* ---------------------------------------------------------------- 地形 */
+function baseHeight(x,z){
+  return Math.sin(x*0.075)*1.7
+       + Math.cos(z*0.062)*1.9
+       + Math.sin((x+z)*0.031)*2.8
+       + Math.sin(x*0.019 - z*0.027)*3.4
+       + Math.cos(x*0.145)*0.5 + Math.sin(z*0.16)*0.45;
+}
+const FLATS = [];   // {x,z,r,h}  平坦化ポイント（オアシス・遺跡・ボス穴）
+function heightAt(x,z){
+  let h = baseHeight(x,z);
+  for(const f of FLATS){
+    const d = Math.hypot(x-f.x, z-f.z);
+    if(d < f.r){
+      const t = 1 - d/f.r;
+      const s = t*t*(3-2*t);
+      h = h*(1-s) + f.h*s;
+      if(f.pit) h -= Math.sin(s*Math.PI)*f.pit;
+    }
+  }
+  return h;
+}
+
+/* ---------------------------------------------------------------- Three.js セットアップ */
+const renderer = new THREE.WebGLRenderer({ canvas:elCanvas, antialias:false });
+renderer.setPixelRatio(1);
+renderer.setSize(VW, VH, false);
+
+const rt = new THREE.WebGLRenderTarget(VW, VH, {
+  minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter,
+  format: THREE.RGBAFormat, depthBuffer:true, stencilBuffer:false
+});
+
+const scene = new THREE.Scene();
+const SKY_LOW  = new THREE.Color(0xe08040);
+const SKY_HIGH = new THREE.Color(0x281848);
+scene.fog = new THREE.Fog(0xc87848, 40, 135);
+
+const camera = new THREE.PerspectiveCamera(58, VW/VH, 0.5, 400);
+
+/* --- 空ドーム --- */
+const skyMat = new THREE.ShaderMaterial({
+  side: THREE.BackSide, depthWrite:false, depthTest:false, fog:false,
+  uniforms:{ lo:{value:SKY_LOW}, hi:{value:SKY_HIGH} },
+  vertexShader:`varying float vy; void main(){ vy = normalize(position).y; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+  fragmentShader:`uniform vec3 lo; uniform vec3 hi; varying float vy;
+    void main(){ float t = clamp(vy*1.5+0.12,0.0,1.0); gl_FragColor = vec4(mix(lo,hi,pow(t,0.7)),1.0); }`
+});
+const skyDome = new THREE.Mesh(new THREE.SphereGeometry(300,16,12), skyMat);
+skyDome.renderOrder = -1000;
+scene.add(skyDome);
+
+/* --- 太陽（空の直後に描いて必ず背景扱いにする） --- */
+const sun = new THREE.Mesh(
+  new THREE.CircleGeometry(16, 18),
+  new THREE.MeshBasicMaterial({ color:0xffd860, fog:false, depthWrite:false, depthTest:false })
+);
+sun.position.set(-160, 34, -230);
+sun.renderOrder = -999;
+scene.add(sun);
+
+/* --- ライト --- */
+scene.add(new THREE.AmbientLight(0x705070, 1.05));
+const dir = new THREE.DirectionalLight(0xffd0a0, 1.05);
+dir.position.set(-1, 1.3, -1.4);
+scene.add(dir);
+const rim = new THREE.DirectionalLight(0x5060c0, 0.35);
+rim.position.set(1, 0.5, 1);
+scene.add(rim);
+
+/* --- ポストプロセス：9bit量子化 + Bayerディザ --- */
+const postScene = new THREE.Scene();
+const postCam = new THREE.OrthographicCamera(-1,1,1,-1,0,1);
+postScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2,2), new THREE.ShaderMaterial({
+  uniforms:{ tDiffuse:{value:rt.texture}, res:{value:new THREE.Vector2(VW,VH)} },
+  vertexShader:`varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.0,1.0); }`,
+  fragmentShader:`
+    uniform sampler2D tDiffuse; uniform vec2 res; varying vec2 vUv;
+    float bayer2(vec2 a){ a = floor(a); return fract(a.x/2.0 + a.y*a.y*0.75); }
+    void main(){
+      vec3 c = texture2D(tDiffuse, vUv).rgb;
+      vec2 p = vUv*res;
+      float b = bayer2(0.5*p)*0.25 + bayer2(p);   // 4x4 Bayer 0..0.9375
+      float L = 7.0;                               // メガドラ = 3bit/ch
+      c += (b - 0.46) / L;
+      c = floor(clamp(c,0.0,1.0)*L + 0.5) / L;
+      gl_FragColor = vec4(c,1.0);
+    }`
+})));
+
+/* ---------------------------------------------------------------- マテリアル群 */
+const M = {
+  sand:   new THREE.MeshLambertMaterial({ vertexColors:true, flatShading:true }),
+  trunk:  new THREE.MeshLambertMaterial({ color:0x805030, flatShading:true }),
+  leaf:   new THREE.MeshLambertMaterial({ color:0x38803c, flatShading:true }),
+  leaf2:  new THREE.MeshLambertMaterial({ color:0x286030, flatShading:true }),
+  water:  new THREE.MeshLambertMaterial({ color:0x2098c0, flatShading:true, transparent:true, opacity:0.86 }),
+  stone:  new THREE.MeshLambertMaterial({ color:0xa89078, flatShading:true }),
+  stoneD: new THREE.MeshLambertMaterial({ color:0x786050, flatShading:true }),
+  cloth:  new THREE.MeshLambertMaterial({ color:0xe8e0c8, flatShading:true }),
+  cloth2: new THREE.MeshLambertMaterial({ color:0xc03838, flatShading:true }),
+  skin:   new THREE.MeshLambertMaterial({ color:0xd8a070, flatShading:true }),
+  metal:  new THREE.MeshLambertMaterial({ color:0xc0c8d8, flatShading:true }),
+  dark:   new THREE.MeshLambertMaterial({ color:0x302030, flatShading:true }),
+  scorp:  new THREE.MeshLambertMaterial({ color:0x603828, flatShading:true }),
+  scorpD: new THREE.MeshLambertMaterial({ color:0x402018, flatShading:true }),
+  bandit: new THREE.MeshLambertMaterial({ color:0x483050, flatShading:true }),
+  worm:   new THREE.MeshLambertMaterial({ color:0x907050, flatShading:true }),
+  wormD:  new THREE.MeshLambertMaterial({ color:0x584030, flatShading:true }),
+  crystal:new THREE.MeshLambertMaterial({ color:0x60e0ff, flatShading:true, emissive:0x104050 }),
+  gold:   new THREE.MeshLambertMaterial({ color:0xffd860, flatShading:true, emissive:0x302000 }),
+  camel:  new THREE.MeshLambertMaterial({ color:0xd0a060, flatShading:true }),
+};
+const box = (w,h,d,m)=> new THREE.Mesh(new THREE.BoxGeometry(w,h,d), m);
+const cyl = (rt_,rb,h,s,m)=> new THREE.Mesh(new THREE.CylinderGeometry(rt_,rb,h,s), m);
+const con = (r,h,s,m)=> new THREE.Mesh(new THREE.ConeGeometry(r,h,s), m);
+
+/* ---------------------------------------------------------------- ワールド定義 */
+const OASIS = [
+  { name:'始まりのオアシス', x:0,   z:0,    r:22 },
+  { name:'月影のオアシス',   x:66,  z:-72,  r:17 },
+  { name:'骨のオアシス',     x:-78, z:58,   r:17 },
+];
+const RUINS = { x:95, z:78, r:24 };
+const PIT   = { x:-98, z:-96, r:30 };
+/* 水面は o.r*POND_K、その外周に草リング(+1.6)。老人とプレイヤーは
+   「草リングの外・ヤシの内側」の帯に置く（湖に立たせない）。 */
+const POND_K     = 0.34;
+const POND_R0    = OASIS[0].r * POND_K;          // 7.48
+const SHORE_R0   = POND_R0 + 1.6;                // 9.08 草リング外縁
+const ELDER      = { x:4,   z:-11   };           // 中心から 11.7m ＝ 岸の外
+const SPAWN_POS  = { x:4.5, z:10.5  };           // 中心から 11.4m ＝ 岸の外
+
+
+OASIS.forEach(o => FLATS.push({ x:o.x, z:o.z, r:o.r+8, h:baseHeight(o.x,o.z) }));
+FLATS.push({ x:RUINS.x, z:RUINS.z, r:RUINS.r+8, h:baseHeight(RUINS.x,RUINS.z) });
+FLATS.push({ x:PIT.x,   z:PIT.z,   r:PIT.r+10, h:baseHeight(PIT.x,PIT.z), pit:3.5 });
+
+/* --- 地形メッシュ --- */
+(function buildTerrain(){
+  const SEG = 110, SIZE = WORLD*2;
+  const g = new THREE.PlaneGeometry(SIZE, SIZE, SEG, SEG);
+  g.rotateX(-Math.PI/2);
+  const pos = g.attributes.position;
+  const col = new Float32Array(pos.count*3);
+  const cA = new THREE.Color(0xe0a860), cB = new THREE.Color(0xb87840), cC = new THREE.Color(0xf0d098);
+  const tmp = new THREE.Color();
+  for(let i=0;i<pos.count;i++){
+    const x = pos.getX(i), z = pos.getZ(i);
+    const y = heightAt(x,z);
+    pos.setY(i, y);
+    const t = THREE.MathUtils.clamp((y+6)/13, 0, 1);
+    tmp.copy(cB).lerp(cA, t).lerp(cC, Math.max(0,(t-0.62)*1.8));
+    // 砂紋のバンディング（メガドラのカラーバンドっぽさ）
+    const band = (Math.sin(x*0.5+z*0.32)>0.72) ? 1.09 : 1.0;
+    col[i*3] = tmp.r*band; col[i*3+1] = tmp.g*band; col[i*3+2] = tmp.b*band;
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(col,3));
+  g.computeVertexNormals();
+  scene.add(new THREE.Mesh(g, M.sand));
+})();
+
+/* ---------------------------------------------------------------- 当たり判定 */
+// 円柱コライダー（ヤシ・岩・テント・柱・NPC など）
+const colliders = [];
+const _res = { x:0, z:0 };
+function resolveCollisions(nx, nz, radius){
+  for(let i=0;i<colliders.length;i++){
+    const c = colliders[i];
+    if(!c.on) continue;
+    const dx = nx - c.x, dz = nz - c.z;
+    const rr = c.r + radius;
+    const d2 = dx*dx + dz*dz;
+    if(d2 < rr*rr){
+      const d = Math.sqrt(d2);
+      if(d < 0.0001){ nx = c.x + rr; nz = c.z; }
+      else { nx = c.x + dx/d*rr; nz = c.z + dz/d*rr; }
+    }
+  }
+  _res.x = nx; _res.z = nz; return _res;
+}
+function addCollider(x,z,r){ const c={x,z,r,on:true}; colliders.push(c); return c; }
+
+/* --- ヤシの木 --- */
+function palm(x,z,sc){
+  const g = new THREE.Group();
+  const h = 5+Math.random()*3;
+  const t = cyl(0.22,0.4,h,5,M.trunk); t.position.y = h/2; t.rotation.z = (Math.random()-0.5)*0.22; g.add(t);
+  for(let i=0;i<6;i++){
+    const l = box(3.6,0.22,1.0, i%2?M.leaf:M.leaf2);
+    l.position.set(Math.cos(i/6*Math.PI*2)*1.7, h-0.3, Math.sin(i/6*Math.PI*2)*1.7);
+    l.rotation.y = -i/6*Math.PI*2; l.rotation.z = -0.34;
+    g.add(l);
+  }
+  g.position.set(x, heightAt(x,z), z);
+  g.scale.setScalar(sc||1);
+  scene.add(g);
+  addCollider(x, z, 0.62*(sc||1));
+  return g;
+}
+/* --- 岩 --- */
+function rock(x,z,s){
+  const sz = s||1.4;
+  const r = new THREE.Mesh(new THREE.DodecahedronGeometry(sz, 0), M.stoneD);
+  r.position.set(x, heightAt(x,z)+ sz*0.4, z);
+  r.rotation.set(Math.random()*3,Math.random()*3,Math.random()*3);
+  r.scale.y = 0.65;
+  scene.add(r);
+  addCollider(x, z, sz*0.82);
+  return r;
+}
+/* --- 水面 --- */
+function pond(x,z,r){
+  const w = new THREE.Mesh(new THREE.CircleGeometry(r, 14), M.water);
+  w.rotation.x = -Math.PI/2;
+  w.position.set(x, heightAt(x,z)+0.12, z);
+  scene.add(w);
+  const ring = new THREE.Mesh(new THREE.RingGeometry(r, r+1.6, 16), new THREE.MeshLambertMaterial({color:0x486830, flatShading:true, side:THREE.DoubleSide}));
+  ring.rotation.x = -Math.PI/2; ring.position.set(x, heightAt(x,z)+0.06, z);
+  scene.add(ring);
+  return w;
+}
+/* --- ピラミッド型の天幕（オアシスの目印）---
+   2026-09-12: 「ピラミッドが小さい」指摘により 2.6 → 6.4 へ拡大（約2.4倍）。
+   ヤシ(高さ5〜8)に対して見上げる大きさになる。 */
+const PYR_R = 6.4, PYR_H = 7.4;
+function tent(x,z,rot){
+  const g = new THREE.Group();
+  const b = con(PYR_R, PYR_H, 4, M.cloth); b.position.y = PYR_H/2; b.rotation.y = Math.PI/4; g.add(b);
+  // 段差のある石積みに見せる腰回り
+  const step = con(PYR_R*1.12, PYR_H*0.30, 4, M.cloth2);
+  step.position.y = PYR_H*0.15; step.rotation.y = Math.PI/4; g.add(step);
+  // 入口
+  const f = box(2.4, 3.0, 0.3, M.cloth2); f.position.set(0, 1.5, PYR_R*0.62); g.add(f);
+  const cap = con(0.9, 1.2, 4, M.gold); cap.position.y = PYR_H + 0.5; cap.rotation.y = Math.PI/4; g.add(cap);
+  g.position.set(x, heightAt(x,z), z); g.rotation.y = rot||0;
+  scene.add(g);
+  addCollider(x, z, PYR_R*0.72);
+  return g;
+}
+
+/* --- オアシス配置 --- */
+const waters = [];
+OASIS.forEach((o,idx)=>{
+  waters.push(pond(o.x, o.z, o.r*POND_K));
+  const n = 7 + idx;
+  for(let i=0;i<n;i++){
+    const a = i/n*Math.PI*2 + idx, d = o.r*0.55 + Math.random()*o.r*0.35;
+    palm(o.x+Math.cos(a)*d, o.z+Math.sin(a)*d, 0.85+Math.random()*0.4);
+  }
+  for(let i=0;i<5;i++){
+    const a = Math.random()*Math.PI*2, d = o.r*0.8 + Math.random()*8;
+    rock(o.x+Math.cos(a)*d, o.z+Math.sin(a)*d, 0.8+Math.random());
+  }
+});
+tent(14,-9, -0.5); tent(-15,-7, 0.7);   // 老人・初期位置を塞がない距離へ
+
+/* --- 遺跡 --- */
+(function buildRuins(){
+  for(let i=0;i<10;i++){
+    const a = i/10*Math.PI*2, d = 13;
+    const x = RUINS.x+Math.cos(a)*d, z = RUINS.z+Math.sin(a)*d;
+    const h = 5 + (i%3)*2.2;
+    const p = cyl(0.9, 1.1, h, 6, M.stone);
+    p.position.set(x, heightAt(x,z)+h/2, z);
+    scene.add(p); addCollider(x, z, 1.25);
+    const cap = box(2.6,0.6,2.6, M.stoneD); cap.position.set(x, heightAt(x,z)+h+0.3, z); scene.add(cap);
+  }
+  const base = cyl(4.4,5.0,1.2,8,M.stoneD);
+  base.position.set(RUINS.x, heightAt(RUINS.x,RUINS.z)+0.6, RUINS.z); scene.add(base);
+  addCollider(RUINS.x, RUINS.z, 4.2);
+  for(let i=0;i<6;i++){
+    const a=Math.random()*6.3, d=18+Math.random()*7;
+    rock(RUINS.x+Math.cos(a)*d, RUINS.z+Math.sin(a)*d, 1+Math.random()*1.2);
+  }
+})();
+
+/* --- ボスの穴：骨と旗 --- */
+(function buildPit(){
+  for(let i=0;i<14;i++){
+    const a = Math.random()*6.3, d = 8+Math.random()*20;
+    const x = PIT.x+Math.cos(a)*d, z = PIT.z+Math.sin(a)*d;
+    const b = box(0.35, 2.2+Math.random()*1.6, 0.35, M.cloth);
+    b.position.set(x, heightAt(x,z)+1.2, z);
+    b.rotation.set((Math.random()-0.5)*0.7, Math.random()*3, (Math.random()-0.5)*0.7);
+    scene.add(b);
+  }
+  for(let i=0;i<8;i++){
+    const a=Math.random()*6.3, d=26+Math.random()*8;
+    rock(PIT.x+Math.cos(a)*d, PIT.z+Math.sin(a)*d, 1.4+Math.random()*1.4);
+  }
+})();
+
+/* ---------------------------------------------------------------- 人型ビルダー */
+function humanoid(cl, cl2, sk, withSword){
+  const g = new THREE.Group();
+  const body = box(1.1,1.5,0.7, cl); body.position.y = 1.35; g.add(body);
+  const robe = con(0.95,1.1,6, cl); robe.position.y = 0.55; g.add(robe);
+  const head = box(0.62,0.62,0.6, sk); head.position.y = 2.35; g.add(head);
+  const hood = box(0.78,0.42,0.76, cl2); hood.position.y = 2.62; g.add(hood);
+  const tail = box(0.2,0.9,0.5, cl2); tail.position.set(0,2.1,-0.36); g.add(tail);
+  const aL = box(0.28,0.95,0.28, cl); aL.position.set(-0.7,1.35,0); g.add(aL);
+  const aR = box(0.28,0.95,0.28, cl); aR.position.set( 0.7,1.35,0); g.add(aR);
+  const lL = box(0.3,0.8,0.3, cl2); lL.position.set(-0.28,0.4,0); g.add(lL);
+  const lR = box(0.3,0.8,0.3, cl2); lR.position.set( 0.28,0.4,0); g.add(lR);
+  let arm=null;
+  if(withSword){
+    arm = new THREE.Group();
+    arm.position.set(0.72,1.55,0);
+    const a = box(0.28,0.95,0.28, cl); a.position.y=-0.4; arm.add(a);
+    const bl = box(0.16,1.9,0.3, M.metal); bl.position.y=-1.45; arm.add(bl);
+    const gu = box(0.55,0.16,0.4, M.gold); gu.position.y=-0.85; arm.add(gu);
+    g.remove(aR); g.add(arm);
+  }
+  return { g, parts:{ lL, lR, aL, aR, head, arm } };
+}
+
+/* ---------------------------------------------------------------- プレイヤー */
+const P = {
+  x:SPAWN_POS.x, z:SPAWN_POS.z, yaw:Math.PI, y:0,
+  hp:60, maxhp:60, lv:1, exp:0, next:30,
+  atkT:0, hurtT:0, invT:0, dead:false, walk:0, speed:11
+};
+const pm = humanoid(M.cloth, M.cloth2, M.skin, true);
+const player = pm.g;
+scene.add(player);
+
+/* ---------------------------------------------------------------- NPC */
+const npc = (function(){
+  const h = humanoid(new THREE.MeshLambertMaterial({color:0x60a0c8, flatShading:true}),
+                     new THREE.MeshLambertMaterial({color:0x304870, flatShading:true}),
+                     M.skin, false);
+  h.g.position.set(ELDER.x, heightAt(ELDER.x, ELDER.z), ELDER.z);
+  h.g.rotation.y = Math.atan2(-ELDER.x, -ELDER.z);   // 湖（中心）の方を向かせる
+  const beard = box(0.5,0.45,0.2, M.cloth); beard.position.set(0,2.05,0.32); h.g.add(beard);
+  scene.add(h.g);
+  addCollider(ELDER.x, ELDER.z, 0.75);
+  return h;
+})();
+// ラクダ
+(function camel(){
+  const g = new THREE.Group();
+  const b = box(2.6,1.2,1.1, M.camel); b.position.y=1.8; g.add(b);
+  const hump = con(0.75,1.0,5,M.camel); hump.position.set(-0.2,2.6,0); g.add(hump);
+  const neck = box(0.5,1.5,0.5, M.camel); neck.position.set(1.3,2.5,0); neck.rotation.z=-0.35; g.add(neck);
+  const head = box(0.85,0.5,0.45, M.camel); head.position.set(1.85,3.2,0); g.add(head);
+  [[-1,0.4],[-1,-0.4],[1,0.4],[1,-0.4]].forEach(p=>{
+    const l = box(0.28,1.8,0.28, M.camel); l.position.set(p[0],0.9,p[1]); g.add(l);
+  });
+  g.position.set(-4, heightAt(-4,-6), -6); g.rotation.y = 0.9;
+  scene.add(g);
+  addCollider(-4, -6, 1.5);
+})();
+
+/* ---------------------------------------------------------------- 敵 */
+const enemies = [];
+function mkScorpion(){
+  const g = new THREE.Group();
+  const b = box(1.5,0.6,1.0, M.scorp); b.position.y=0.7; g.add(b);
+  const hd = box(0.8,0.45,0.7, M.scorpD); hd.position.set(0.95,0.7,0); g.add(hd);
+  const tail = new THREE.Group(); tail.position.set(-0.7,0.9,0);
+  for(let i=0;i<4;i++){ const s = box(0.34,0.34,0.34,M.scorpD); s.position.set(-i*0.34, i*0.42, 0); tail.add(s); }
+  const st = con(0.2,0.6,4,M.gold); st.position.set(-1.1,1.85,0); st.rotation.z=Math.PI*0.9; tail.add(st);
+  g.add(tail);
+  [[0.5,0.55],[0,0.6],[-0.5,0.55]].forEach(p=>{
+    [1,-1].forEach(s=>{ const l=box(0.16,0.16,1.1,M.scorpD); l.position.set(p[0],0.4,s*p[1]); g.add(l); });
+  });
+  [1,-1].forEach(s=>{ const c=box(0.7,0.28,0.32,M.scorpD); c.position.set(1.4,0.55,s*0.55); g.add(c); });
+  return g;
+}
+function mkBandit(){
+  const h = humanoid(M.bandit, M.dark, M.skin, true);
+  return h.g;
+}
+function mkWorm(){
+  const g = new THREE.Group();
+  for(let i=0;i<7;i++){
+    const r = 2.8 - i*0.26;
+    const s = cyl(r,r*1.05, 1.5, 8, i%2?M.worm:M.wormD);
+    s.position.y = 7.2 - i*1.35;
+    s.rotation.y = i*0.3;
+    g.add(s);
+  }
+  const mouth = con(2.9, 3.0, 8, M.wormD); mouth.position.y = 9.3; g.add(mouth);
+  for(let i=0;i<8;i++){
+    const t = con(0.4,1.3,4,M.cloth);
+    const a = i/8*Math.PI*2;
+    t.position.set(Math.cos(a)*2.0, 8.6, Math.sin(a)*2.0);
+    t.rotation.z = -Math.cos(a)*0.5; t.rotation.x = Math.sin(a)*0.5;
+    g.add(t);
+  }
+  return g;
+}
+const ETYPE = {
+  scorpion:{ name:'サバクサソリ', hp:14, dmg:6,  spd:6.2, range:2.4, exp:9,  make:mkScorpion, scale:1.0, hitR:1.6, drop:'crystal' },
+  bandit:  { name:'砂の盗賊',     hp:30, dmg:11, spd:6.0, range:2.8, exp:22, make:mkBandit,   scale:1.0, hitR:1.4, drop:null },
+  worm:    { name:'砂の王 ザルタ', hp:400,dmg:20, spd:4.5, range:6.2, exp:240,make:mkWorm,    scale:1.0, hitR:3.2, boss:true }
+};
+function spawn(type, x, z){
+  const t = ETYPE[type];
+  const g = t.make();
+  g.scale.setScalar(t.scale);
+  g.position.set(x, heightAt(x,z), z);
+  scene.add(g);
+  const e = { type, t, g, x, z, hp:t.hp, maxhp:t.hp, yaw:0, atkCd:Math.random()*1.5,
+              hurtT:0, dead:false, wob:Math.random()*6, home:{x,z}, alive:true };
+  enemies.push(e);
+  return e;
+}
+/* リポップ待ち行列 */
+const respawnQueue = [];
+function tickRespawn(dt){
+  for(let i=respawnQueue.length-1;i>=0;i--){
+    const r = respawnQueue[i];
+    r.t -= dt;
+    if(r.t <= 0){
+      // プレイヤーの視界の外でだけ湧かせる
+      if(Math.hypot(P.x-r.x, P.z-r.z) > 45){
+        respawnQueue.splice(i,1);
+        spawn(r.type, r.x, r.z);
+      } else r.t = 4;
+    }
+  }
+  // 死体オブジェクトの掃除
+  for(let i=enemies.length-1;i>=0;i--) if(!enemies[i].alive) enemies.splice(i,1);
+}
+
+/* 通常敵の配置 */
+function populate(){
+  for(let i=0;i<16;i++){
+    let a = Math.random()*6.3, d = 34 + Math.random()*70;
+    spawn('scorpion', Math.cos(a)*d, Math.sin(a)*d);
+  }
+  for(let i=0;i<7;i++){
+    const a = i/7*Math.PI*2, d = 17 + Math.random()*6;
+    spawn('bandit', RUINS.x+Math.cos(a)*d, RUINS.z+Math.sin(a)*d);
+  }
+  for(let i=0;i<4;i++){
+    const a = Math.random()*6.3, d = 40+Math.random()*50;
+    spawn('bandit', Math.cos(a)*d, Math.sin(a)*d);
+  }
+}
+populate();
+
+/* ---------------------------------------------------------------- アイテム（拾い物） */
+const pickups = [];
+function dropItem(kind, x, z){
+  let mesh;
+  if(kind==='crystal'){
+    mesh = new THREE.Mesh(new THREE.OctahedronGeometry(0.55,0), M.crystal);
+  }else{
+    mesh = new THREE.Mesh(new THREE.BoxGeometry(0.7,0.9,0.12), M.gold);
+  }
+  mesh.position.set(x, heightAt(x,z)+1.0, z);
+  scene.add(mesh);
+  pickups.push({ kind, mesh, x, z, t:0 });
+}
+/* 石板（遺跡中央） */
+let tabletTaken = false;
+const tablet = (function(){
+  const g = new THREE.Group();
+  const s = box(1.3,1.9,0.28, M.stone); s.position.y=1.0; g.add(s);
+  const glow = box(0.85,1.25,0.06, M.gold); glow.position.set(0,1.05,0.17); g.add(glow);
+  g.position.set(RUINS.x, heightAt(RUINS.x,RUINS.z)+1.2, RUINS.z);
+  scene.add(g); return g;
+})();
+
+/* ---------------------------------------------------------------- クエスト */
+const Q = {
+  stage: 0,       // 0:未受注 1:水晶3つ 2:石板 3:ボス 4:報告 5:完
+  crystals: 0,
+  hasTablet: false,
+  bossSpawned: false,
+  boss: null,
+  kills: 0,
+  startTime: 0
+};
+const QTEXT = [
+  { t:'クエスト', b:'オアシスの老人に話しかけよう' },
+  { t:'① 水晶のかけら', b:'サバクサソリを倒して\n水晶を3つ集める  0/3' },
+  { t:'② 失われた石板', b:'東の遺跡へ向かい\n石板を手に入れる' },
+  { t:'③ 砂の王を討て',  b:'北西の砂の穴へ。\n砂の王ザルタを討伐せよ' },
+  { t:'④ 帰還',         b:'オアシスの老人に\n報告しよう' },
+  { t:'クリア！',        b:'砂は静けさを取り戻した' },
+];
+function updQuest(){
+  const q = QTEXT[Q.stage];
+  elQt.textContent = q.t;
+  let b = q.b;
+  if(Q.stage===1) b = `サバクサソリを倒して\n水晶を3つ集める  ${Q.crystals}/3`;
+  elQb.textContent = b;
+}
+function questTarget(){
+  switch(Q.stage){
+    case 0: return { x:ELDER.x, z:ELDER.z, label:'老人' };
+    case 1: {
+      let best=null, bd=1e9;
+      for(const e of enemies){ if(e.alive && e.type==='scorpion'){ const d=Math.hypot(e.x-P.x,e.z-P.z); if(d<bd){bd=d;best=e;} } }
+      return best ? { x:best.x, z:best.z, label:'サソリ' } : { x:0,z:0,label:'?' };
+    }
+    case 2: return { x:RUINS.x, z:RUINS.z, label:'遺跡' };
+    case 3: return { x:PIT.x, z:PIT.z, label:'砂の穴' };
+    default: return { x:ELDER.x, z:ELDER.z, label:'老人' };
+  }
+}
+
+/* ---------------------------------------------------------------- メッセージ */
+const MQ = [];
+let msgOpen = false;
+function say(name, ...lines){
+  lines.forEach(l => MQ.push({ name, text:l }));
+  if(!msgOpen) nextMsg();
+}
+function nextMsg(){
+  if(MQ.length===0){ elMsg.style.display='none'; msgOpen=false; syncTouchVis(); return; }
+  const m = MQ.shift();
+  elMsgName.textContent = m.name ? '【'+m.name+'】' : '';
+  elMsgText.textContent = m.text;
+  elMsg.style.display='block';
+  msgOpen = true;
+  syncTouchVis();
+  SE.talk();
+}
+// パネルはゲーム画面の外（下25%）にあり、メッセージ窓と重ならない。
+// 会話中も出したままにして「話」「斬」で送れるようにする。
+function syncTouchVis(){ /* 重なりが解消したため非表示化は廃止（2026-09-12） */ }
+function toast(txt, col){
+  elToast.textContent = txt;
+  elToast.style.color = col || '#ffd860';
+  elToast.style.opacity = 1;
+  elToast.style.transition = 'none';
+  setTimeout(()=>{ elToast.style.transition='opacity .8s'; elToast.style.opacity=0; }, 1100);
+}
+
+/* ---------------------------------------------------------------- 入力 */
+const K = {};
+const state = { scene:'title' };   // title / play / over / clear
+window.addEventListener('keydown', e=>{
+  if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
+  K[e.key.toLowerCase()] = true;
+  if(e.key === 'Enter' || e.key === ' '){
+    if(state.scene==='title'){ startGame(); return; }
+    if(state.scene==='over'){ respawn(); return; }
+    if(state.scene==='clear'){ location.reload(); return; }
+  }
+  if(msgOpen && (e.key===' '||e.key==='Enter'||e.key.toLowerCase()==='f'||e.key.toLowerCase()==='j')){ nextMsg(); }
+  if(e.key.toLowerCase()==='m'){ toggleSound(); }
+});
+window.addEventListener('keyup', e=>{ K[e.key.toLowerCase()] = false; });
+
+function toggleSound(){
+  SND.on = !SND.on;
+  elSnd.textContent = '[ M ] SOUND: ' + (SND.on?'ON':'OFF');
+  if(SND.on){ initAudio(); if(state.scene==='play') bgmStart(BGM.mode); } else bgmStop();
+}
+elSnd.addEventListener('click', toggleSound);
+
+/* --- ドラッグで視点／画面どこでもタップで送り（レターボックス部分も有効） --- */
+let dragging=false, lastX=0;
+// タッチパッド類の上では視点操作・送りを発火させない
+const onWidget = e => !!(e.target && e.target.closest && e.target.closest('#pad, #snd'));
+window.addEventListener('pointerdown', e=>{ if(onWidget(e)) return; dragging=true; lastX=e.clientX; });
+window.addEventListener('pointerup', ()=>{ dragging=false; });
+window.addEventListener('pointermove', e=>{
+  if(dragging){ P.yaw -= (e.clientX-lastX)*0.006; lastX=e.clientX; }
+});
+window.addEventListener('click', e=>{
+  if(onWidget(e)) return;
+  if(state.scene==='title'){ startGame(); return; }
+  if(state.scene==='over'){ respawn(); return; }
+  if(state.scene==='clear'){ location.reload(); return; }
+  if(msgOpen){ nextMsg(); return; }
+});
+
+/* --- タッチ操作（パネルはCSS実寸。半径はDOMから都度読む） --- */
+const T = { mx:0, my:0, active:false, atk:false, talk:false, rotL:false, rotR:false };
+(function setupTouch(){
+  const st=$('stick'), kn=$('knob');
+  let sid=null, cx=0, cy=0, travel=26;
+  const setKnob=(dx,dy)=>{ kn.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`; };
+  st.addEventListener('pointerdown', e=>{
+    e.preventDefault(); sid=e.pointerId; st.setPointerCapture(sid);
+    const r = st.getBoundingClientRect();
+    cx=r.left+r.width/2; cy=r.top+r.height/2;
+    travel = r.width*0.26;          // ノブの可動半径
+    T.active=true;
+  });
+  st.addEventListener('pointermove', e=>{
+    if(e.pointerId!==sid) return;
+    e.preventDefault();
+    const dx=e.clientX-cx, dy=e.clientY-cy;
+    const m = Math.min(1, Math.hypot(dx,dy)/(travel*1.55));
+    const a = Math.atan2(dy,dx);
+    T.mx = Math.cos(a)*m; T.my = Math.sin(a)*m;
+    setKnob(Math.cos(a)*m*travel, Math.sin(a)*m*travel);
+  });
+  const end = e=>{ if(e.pointerId!==sid) return; sid=null; T.active=false; T.mx=T.my=0; setKnob(0,0); };
+  st.addEventListener('pointerup', end); st.addEventListener('pointercancel', end);
+
+  // 打感：押した瞬間に見た目が沈む＋離しで戻す（pointerdownで即発火＝遅延ゼロ）
+  const bind=(el,on,off)=>{
+    el.addEventListener('pointerdown', e=>{ e.preventDefault(); el.classList.add('on'); on(); });
+    const up = e=>{ if(e) e.preventDefault(); el.classList.remove('on'); if(off) off(); };
+    el.addEventListener('pointerup', up);
+    el.addEventListener('pointerleave', up);
+    el.addEventListener('pointercancel', ()=>up());
+  };
+  bind($('bA'), ()=>{ if(msgOpen) nextMsg(); else T.atk=true; });
+  bind($('bB'), ()=>{ if(msgOpen) nextMsg(); else T.talk=true; });
+  bind($('bL'), ()=>T.rotL=true, ()=>T.rotL=false);
+  bind($('bR'), ()=>T.rotR=true, ()=>T.rotR=false);
+})();
+
+/* ---------------------------------------------------------------- ゲーム進行 */
+function startGame(){
+  elTitle.style.display='none';
+  elOver.style.display='none';
+  elClear.style.display='none';
+  state.scene = 'play';
+  Q.startTime = performance.now();
+  initAudio();
+  if(actx && actx.state === 'suspended') actx.resume();
+  bgmStart('field');
+  updQuest();
+  say('', '灼熱の砂海へようこそ。', 'オアシスの老人が\nあなたを待っている。');
+}
+function respawn(){
+  elOver.style.display='none';
+  state.scene='play';
+  P.dead=false; P.hp = P.maxhp;
+  P.x = OASIS[0].x + SPAWN_POS.x; P.z = OASIS[0].z + SPAWN_POS.z;
+  P.invT = 2;
+  bgmStart(Q.stage===3 && Q.bossSpawned ? 'field' : 'field');
+  if(Q.boss && Q.boss.alive){ Q.boss.hp = Q.boss.maxhp; }
+}
+function gameOver(){
+  P.dead = true; state.scene='over';
+  bgmStop(); SE.die();
+  elOver.style.display='flex';
+}
+function gameClear(){
+  state.scene='clear';
+  bgmStop();
+  [523,659,784,1047,1319].forEach((f,i)=>setTimeout(()=>fm(f,0.4,2,3,0.24),i*160));
+  const sec = Math.floor((performance.now()-Q.startTime)/1000);
+  $('clearTxt').textContent = `踏破時間  ${String(Math.floor(sec/60)).padStart(2,'0')}:${String(sec%60).padStart(2,'0')}\n撃破数  ${Q.kills}体　到達 Lv${P.lv}`;
+  elClear.style.display='flex';
+}
+
+/* ---------------------------------------------------------------- 会話 */
+function talkNPC(){
+  const n = '老 ハーサン';
+  if(Q.stage===0){
+    say(n, 'よく来た、旅の者。\nこの砂海は死にかけておる。',
+           '砂の王ザルタが目覚め\n泉が枯れはじめた。',
+           'まずは力を示せ。\nサバクサソリを狩り\n水晶のかけらを3つ持ってこい。');
+    Q.stage = 1; updQuest();
+  } else if(Q.stage===1){
+    if(Q.crystals >= 3){
+      say(n, 'おお、たしかに3つ。\nお前は本物だ。',
+             '次は東の遺跡へ行け。\n盗賊どもが\n「導きの石板」を守っておる。',
+             '石板なくして\nザルタの棲家は開かぬ。');
+      Q.stage = 2; updQuest();
+    } else {
+      say(n, `水晶はまだ ${Q.crystals}/3 じゃ。\n砂の上をよく探せ。`);
+    }
+  } else if(Q.stage===2){
+    if(Q.hasTablet){
+      say(n, 'これが導きの石板か…!',
+             '北西の砂の穴。\nそこにザルタは眠る。',
+             'ゆけ。砂に呑まれるな。');
+      Q.stage = 3; updQuest();
+    } else {
+      say(n, '東の遺跡じゃ。\n柱の輪の中央にある。');
+    }
+  } else if(Q.stage===3){
+    say(n, '北西の穴じゃ。\n地が震えたら、それが合図。');
+  } else if(Q.stage===4){
+    say(n, 'やったな…\n砂が、静かになった。',
+           '泉が戻ってきたぞ。\n見ろ、あの水の色を。',
+           'お前は砂海の英雄だ。\n\n— 砂王記 完 —');
+    Q.stage = 5; updQuest();
+    setTimeout(gameClear, 600);
+  } else {
+    say(n, 'ゆっくり休め、英雄よ。');
+  }
+}
+
+/* ---------------------------------------------------------------- 経験値 */
+function gainExp(v){
+  P.exp += v;
+  while(P.exp >= P.next){
+    P.exp -= P.next; P.lv++;
+    P.next = Math.floor(P.next*1.55);
+    P.maxhp += 14; P.hp = P.maxhp;
+    SE.level();
+    toast(`LEVEL UP!  Lv${P.lv}`, '#ffd860');
+  }
+}
+
+/* ---------------------------------------------------------------- ダメージ演出 */
+const pops = [];
+function popup(text, x, y, col){
+  const d = document.createElement('div');
+  d.className = 'pop'; d.textContent = text; d.style.color = col || '#fff';
+  d.style.left = x+'px'; d.style.top = y+'px';
+  elUI.appendChild(d);
+  pops.push({ el:d, t:0, x, y });
+}
+const _v = new THREE.Vector3();
+function worldToScreen(x,y,z){
+  _v.set(x,y,z).project(camera);
+  return { x:(_v.x*0.5+0.5)*VW, y:(-_v.y*0.5+0.5)*VH, vis:_v.z<1 };
+}
+
+/* ---------------------------------------------------------------- 攻撃 */
+function playerAttack(){
+  if(P.atkT > 0 || P.dead || msgOpen) return;
+  P.atkT = 0.42;
+  SE.slash();
+  const reach = 3.6;
+  const fx = Math.sin(P.yaw), fz = Math.cos(P.yaw);
+  let hitAny = false;
+  for(const e of enemies){
+    if(!e.alive) continue;
+    const dx = e.x-P.x, dz = e.z-P.z;
+    const d = Math.hypot(dx,dz);
+    if(d > reach + e.t.hitR) continue;
+    const dot = (dx/d)*fx + (dz/d)*fz;
+    if(dot < 0.25) continue;
+    const dmg = 11 + P.lv*3 + Math.floor(Math.random()*5);
+    damageEnemy(e, dmg);
+    hitAny = true;
+  }
+  if(hitAny) SE.hit();
+  // 石板・拾い物も斬撃で反応なし（Fで取得）
+}
+function damageEnemy(e, dmg){
+  e.hp -= dmg; e.hurtT = 0.22;
+  const s = worldToScreen(e.x, e.g.position.y + (e.t.boss?9:1.8), e.z);
+  if(s.vis) popup(String(dmg), s.x|0, s.y|0, '#ffd860');
+  if(e.hp <= 0) killEnemy(e);
+}
+function killEnemy(e){
+  e.alive = false; e.dead = true;
+  scene.remove(e.g);
+  Q.kills++;
+  gainExp(e.t.exp);
+  // クエスト①中は確実に水晶を落とす（詰み防止）
+  if(e.t.drop === 'crystal' && Q.stage === 1 && Q.crystals < 3){
+    dropItem('crystal', e.x, e.z);
+  }
+  if(!e.t.boss) respawnQueue.push({ type:e.type, x:e.home.x, z:e.home.z, t:22 });
+  if(e.t.boss){
+    SE.boss();
+    bgmStart('field');
+    Q.stage = 4; updQuest();
+    // 泉が復活
+    waters.forEach(w => w.material.color.setHex(0x40d8f0));
+    say('', '砂の王ザルタは崩れ\n砂へと還った。', '遠くのオアシスから\n水の音がきこえる。', 'オアシスへ戻ろう。');
+    toast('砂の王 撃破！', '#60e0ff');
+  }
+}
+function damagePlayer(dmg){
+  if(P.invT>0 || P.dead) return;
+  P.hp -= dmg; P.invT = 0.55; P.hurtT = 0.25;
+  SE.dmg();
+  const s = worldToScreen(P.x, 2.6, P.z);
+  if(s.vis) popup('-'+dmg, s.x|0, s.y|0, '#f04038');
+  if(P.hp <= 0){ P.hp = 0; gameOver(); }
+}
+
+/* ---------------------------------------------------------------- 調べる */
+function interact(){
+  if(msgOpen){ nextMsg(); return; }
+  // NPC
+  if(Math.hypot(P.x-3, P.z-(-4)) < 5){ talkNPC(); return; }
+  // 石板
+  if(!tabletTaken && Q.stage>=2 && Math.hypot(P.x-RUINS.x, P.z-RUINS.z) < 6){
+    tabletTaken = true; Q.hasTablet = true;
+    scene.remove(tablet);
+    SE.pick();
+    toast('導きの石板を手に入れた！', '#ffd860');
+    say('', '石板に刻まれた文字が\n熱を帯びて光った。', '北西の砂が\n渦を巻きはじめる…');
+    return;
+  }
+  // オアシスで回復
+  for(const o of OASIS){
+    if(Math.hypot(P.x-o.x, P.z-o.z) < o.r*0.55){
+      if(P.hp < P.maxhp){
+        P.hp = P.maxhp; SE.heal();
+        toast(o.name+'　HP全回復', '#60e0ff');
+      } else {
+        say('', o.name+'。\n水は澄んでいる。');
+      }
+      return;
+    }
+  }
+  say('', 'ここには何もない。');
+}
+
+/* ---------------------------------------------------------------- ボス出現 */
+function checkBossSpawn(){
+  if(Q.bossSpawned || Q.stage!==3) return;
+  if(Math.hypot(P.x-PIT.x, P.z-PIT.z) < 34){
+    Q.bossSpawned = true;
+    Q.boss = spawn('worm', PIT.x, PIT.z);
+    bgmStart('boss');
+    SE.boss();
+    say('砂の王 ザルタ', 'グ ォ ォ ォ ォ ……', '砂が、立ち上がった。');
+    toast('― 砂の王 ザルタ ―', '#f04038');
+  }
+}
+
+/* ---------------------------------------------------------------- メインループ */
+let prev = performance.now();
+function loop(now){
+  requestAnimationFrame(loop);
+  let dt = (now - prev)/1000; prev = now;
+  if(dt > 0.05) dt = 0.05;
+
+  bgmTick();
+
+  if(state.scene === 'play') update(dt);
+  updateCamera(dt);
+  updatePops(dt);
+
+  // 描画
+  renderer.setRenderTarget(rt);
+  renderer.clear();
+  renderer.render(scene, camera);
+  renderer.setRenderTarget(null);
+  renderer.render(postScene, postCam);
+}
+
+function update(dt){
+  /* --- 入力 --- */
+  let mf=0, ms=0;
+  if(K['w']||K['arrowup'])    mf += 1;
+  if(K['s']||K['arrowdown'])  mf -= 1;
+  if(K['a']||K['arrowleft'])  ms -= 1;
+  if(K['d']||K['arrowright']) ms += 1;
+  if(K['q']||T.rotL) P.yaw += 2.2*dt;
+  if(K['e']||T.rotR) P.yaw -= 2.2*dt;
+  if(T.active){ mf += -T.my; ms += T.mx; }
+
+  if((K[' ']||K['j']) && !msgOpen) { playerAttack(); }
+  if(T.atk){ T.atk=false; playerAttack(); }
+  if(K['f']){ K['f']=false; interact(); }
+  if(T.talk){ T.talk=false; interact(); }
+
+  /* --- 移動 --- */
+  const mag = Math.hypot(mf,ms);
+  if(mag > 0.01 && !msgOpen && !P.dead){
+    mf/=Math.max(1,mag); ms/=Math.max(1,mag);
+    const fx = Math.sin(P.yaw), fz = Math.cos(P.yaw);
+    const rx = Math.cos(P.yaw), rz = -Math.sin(P.yaw);
+    const sp = P.speed * (P.atkT>0 ? 0.45 : 1);
+    let nx = P.x + (fx*mf + rx*ms) * sp * dt;
+    let nz = P.z + (fz*mf + rz*ms) * sp * dt;
+    // 境界
+    const dd = Math.hypot(nx,nz);
+    if(dd > WORLD-6){ nx = nx/dd*(WORLD-6); nz = nz/dd*(WORLD-6); }
+    // 障害物（ヤシ・岩・テント・柱・NPC など）と衝突
+    const rc = resolveCollisions(nx, nz, 0.7);
+    P.x = rc.x; P.z = rc.z;
+    // 向き
+    const tgt = Math.atan2(fx*mf+rx*ms, fz*mf+rz*ms);
+    let diff = tgt - player.rotation.y;
+    while(diff > Math.PI) diff -= Math.PI*2;
+    while(diff < -Math.PI) diff += Math.PI*2;
+    player.rotation.y += diff * Math.min(1, 14*dt);
+    P.walk += dt * 11;
+  } else {
+    P.walk += dt * 2;
+  }
+
+  // ワールド境界（常時クランプ）
+  const pd = Math.hypot(P.x, P.z);
+  if(pd > WORLD-6){ P.x = P.x/pd*(WORLD-6); P.z = P.z/pd*(WORLD-6); }
+
+  P.y = heightAt(P.x, P.z);
+  player.position.set(P.x, P.y, P.z);
+
+  /* --- プレイヤーアニメ --- */
+  const sw = Math.sin(P.walk) * (mag>0.01?0.55:0.06);
+  pm.parts.lL.rotation.x =  sw;
+  pm.parts.lR.rotation.x = -sw;
+  pm.parts.aL.rotation.x = -sw*0.7;
+  if(P.atkT > 0){
+    P.atkT -= dt;
+    const t = 1 - P.atkT/0.42;
+    const k = Math.sin(Math.min(1,t*1.25) * Math.PI);
+    pm.parts.arm.rotation.x = -k*2.5;
+    pm.parts.arm.rotation.z = -k*0.8;
+  } else {
+    pm.parts.arm.rotation.x += (0.2 - pm.parts.arm.rotation.x)*Math.min(1,10*dt);
+    pm.parts.arm.rotation.z += (0 - pm.parts.arm.rotation.z)*Math.min(1,10*dt);
+  }
+  if(P.invT>0) P.invT -= dt;
+  player.visible = !(P.invT>0 && Math.floor(P.invT*20)%2===0);
+
+  /* --- NPC 揺れ --- */
+  npc.g.rotation.y = 0.4 + Math.sin(performance.now()*0.0009)*0.3;
+
+  /* --- 敵 --- */
+  for(const e of enemies){
+    if(!e.alive) continue;
+    const dx = P.x-e.x, dz = P.z-e.z;
+    const d = Math.hypot(dx,dz);
+    const aggro = e.t.boss ? 60 : 22;
+    e.wob += dt*3;
+    if(d < aggro && !P.dead && !msgOpen){
+      // 追跡
+      if(d > e.t.range){
+        const sp = e.t.spd * (e.hurtT>0?0.3:1);
+        e.x += dx/d * sp * dt;
+        e.z += dz/d * sp * dt;
+      } else {
+        e.atkCd -= dt;
+        if(e.atkCd <= 0){
+          e.atkCd = e.t.boss ? 1.5 : 1.35;
+          damagePlayer(e.t.dmg + Math.floor(Math.random()*4));
+        }
+      }
+      e.yaw = Math.atan2(dx, dz);
+    } else {
+      // 徘徊
+      const hx = e.home.x - e.x, hz = e.home.z - e.z;
+      const hd = Math.hypot(hx,hz);
+      if(hd > 12){ e.x += hx/hd*e.t.spd*0.35*dt; e.z += hz/hd*e.t.spd*0.35*dt; e.yaw = Math.atan2(hx,hz); }
+      else {
+        e.x += Math.sin(e.wob*0.4)*dt*1.6;
+        e.z += Math.cos(e.wob*0.31)*dt*1.6;
+        e.yaw = Math.atan2(Math.sin(e.wob*0.4), Math.cos(e.wob*0.31));
+      }
+    }
+    // 敵もヤシや岩をすり抜けない（ボスは巨体なので除外）
+    if(!e.t.boss){
+      const er = resolveCollisions(e.x, e.z, e.t.hitR*0.55);
+      e.x = er.x; e.z = er.z;
+    }
+    const ey = heightAt(e.x, e.z);
+    let bob = 0;
+    if(e.t.boss){
+      bob = Math.sin(e.wob*1.1)*0.8;
+      e.g.rotation.z = Math.sin(e.wob*0.7)*0.09;
+    } else {
+      bob = Math.abs(Math.sin(e.wob*2.2))*0.18;
+    }
+    e.g.position.set(e.x, ey + bob, e.z);
+    e.g.rotation.y = e.yaw;
+    if(e.hurtT > 0){
+      e.hurtT -= dt;
+      e.g.visible = Math.floor(e.hurtT*30)%2===0;
+    } else e.g.visible = true;
+  }
+
+  /* --- 拾い物 --- */
+  for(let i=pickups.length-1;i>=0;i--){
+    const p = pickups[i];
+    p.t += dt;
+    p.mesh.rotation.y += dt*2.4;
+    p.mesh.position.y = heightAt(p.x,p.z) + 1.0 + Math.sin(p.t*3)*0.22;
+    if(Math.hypot(P.x-p.x, P.z-p.z) < 2.4){
+      scene.remove(p.mesh); pickups.splice(i,1);
+      SE.pick();
+      if(p.kind === 'crystal'){
+        Q.crystals = Math.min(3, Q.crystals+1);
+        toast(`水晶のかけら  ${Q.crystals}/3`, '#60e0ff');
+        updQuest();
+        if(Q.crystals>=3) say('', '水晶が3つ揃った。\n老人のもとへ戻ろう。');
+      }
+    }
+  }
+
+  /* --- 水面ゆらぎ --- */
+  const wt = performance.now()*0.001;
+  waters.forEach((w,i)=>{ w.position.y = heightAt(w.position.x,w.position.z)+0.12+Math.sin(wt*1.4+i)*0.05; });
+
+  tickRespawn(dt);
+  checkBossSpawn();
+  updateHUD();
+}
+
+/* ---------------------------------------------------------------- カメラ */
+const camPos = new THREE.Vector3(0, 10, -14);
+function updateCamera(dt){
+  const back = 12.5, up = 6.4;
+  const tx = P.x - Math.sin(P.yaw)*back;
+  const tz = P.z - Math.cos(P.yaw)*back;
+  const ty = Math.max(heightAt(tx,tz), P.y) + up;
+  camPos.x += (tx-camPos.x)*Math.min(1, 9*dt);
+  camPos.y += (ty-camPos.y)*Math.min(1, 7*dt);
+  camPos.z += (tz-camPos.z)*Math.min(1, 9*dt);
+  camera.position.copy(camPos);
+  camera.lookAt(P.x, P.y+2.4, P.z);
+  sun.lookAt(camera.position);
+}
+
+/* ---------------------------------------------------------------- HUD */
+function updateHUD(){
+  const r = Math.max(0, P.hp/P.maxhp);
+  elHpb.style.width = (r*100)+'%';
+  elHpb.style.background = r>0.5 ? '#f04038' : (r>0.25 ? '#f08030' : '#f0d030');
+  elHpt.textContent = `${Math.ceil(P.hp)}/${P.maxhp}`;
+  elLvl.textContent = 'Lv'+P.lv;
+
+  // ボスHP表示に差し替え
+  if(Q.boss && Q.boss.alive && Math.hypot(P.x-Q.boss.x,P.z-Q.boss.z)<60){
+    elQt.textContent = '砂の王 ザルタ';
+    const br = Math.max(0, Q.boss.hp/Q.boss.maxhp);
+    elQb.textContent = '█'.repeat(Math.round(br*12)).padEnd(12,'░');
+  } else if(Q.boss && Q.boss.alive) { updQuest(); }
+
+  const t = questTarget();
+  const dx = t.x-P.x, dz = t.z-P.z;
+  const dist = Math.hypot(dx,dz);
+  const ang = Math.atan2(dx,dz) - P.yaw;
+  elArrow.style.transform = `rotate(${ang}rad)`;
+  elCdist.textContent = Math.round(dist)+'m';
+}
+
+/* --- ダメージ数値アニメ --- */
+function updatePops(dt){
+  for(let i=pops.length-1;i>=0;i--){
+    const p = pops[i];
+    p.t += dt; p.y -= dt*22;
+    p.el.style.top = p.y+'px';
+    p.el.style.opacity = String(Math.max(0, 1 - p.t/0.8));
+    if(p.t > 0.8){ p.el.remove(); pops.splice(i,1); }
+  }
+}
+
+/* ---------------------------------------------------------------- iOS 対応 */
+// ダブルタップ拡大の封じ込め（touch-action:none で大半は止まるが Safari の保険）
+let _lastTouchEnd = 0;
+document.addEventListener('touchend', e=>{
+  const now = Date.now();
+  if(now - _lastTouchEnd <= 350) e.preventDefault();
+  _lastTouchEnd = now;
+}, { passive:false });
+document.addEventListener('dblclick', e=> e.preventDefault(), { passive:false });
+// ピンチズーム（iOS Safari 固有のジェスチャイベント）
+['gesturestart','gesturechange','gestureend'].forEach(t=>
+  document.addEventListener(t, e=> e.preventDefault(), { passive:false }));
+// 長押しの選択メニュー
+document.addEventListener('contextmenu', e=> e.preventDefault());
+
+// WebAudio unlock：iOSは「ユーザー操作と同じイベント内」でしか AudioContext を起こせない
+(function unlockAudio(){
+  const go = ()=>{
+    initAudio();
+    if(actx && actx.state === 'suspended') actx.resume();
+    if(actx){
+      // 無音バッファを1つ流して確実に解錠する
+      const b = actx.createBuffer(1, 1, 22050);
+      const src = actx.createBufferSource(); src.buffer = b;
+      src.connect(actx.destination); src.start(0);
+      ['touchstart','touchend','pointerdown','click','keydown'].forEach(t=>
+        document.removeEventListener(t, go, true));
+    }
+  };
+  ['touchstart','touchend','pointerdown','click','keydown'].forEach(t=>
+    document.addEventListener(t, go, true));
+})();
+
+/* ---------------------------------------------------------------- 起動 */
+resize();
+requestAnimationFrame(()=> resize());   // パネル高さ確定後にもう一度
+updQuest();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
