@@ -99,12 +99,11 @@
     min-height:calc(132px + env(safe-area-inset-bottom, 0px));
     box-sizing:border-box; overflow:hidden;
     padding:9px 2% calc(9px + env(safe-area-inset-bottom,0px)) 2%;
-    display:none; align-items:stretch; gap:0;
+    display:flex; align-items:stretch; gap:0;
     background:linear-gradient(#140a12, #090509);
     border-top:2px solid #483040;
     touch-action:none; z-index:50;
   }
-  body.touch #pad { display:flex; }
 
   /* height:100% を与えないと子の height:min(100%,…) が 0 に潰れる */
   #padL, #padC, #padR { height:100%; display:flex; align-items:center; }
@@ -154,6 +153,44 @@
     left:4px; right:auto; bottom:auto; top:52px;
     color:#c0b0a0; background:#100810; border:1px solid #483040; padding:1px 3px;
   }
+
+  /* ミュート／ポーズはスケール対象外。HUDに置くとレターボックスで潰れる */
+  #util {
+    position:fixed;
+    right:calc(8px + env(safe-area-inset-right, 0px));
+    bottom:calc(8px + env(safe-area-inset-bottom, 0px) + max(25vh, 132px));
+    display:flex; gap:8px; z-index:90;
+  }
+  #util .ubtn {
+    width:44px; height:44px; min-width:44px; min-height:44px; border-radius:8px;
+    background:rgba(16,8,16,.86); border:2px solid #483040; color:#ffd860;
+    font-family:inherit; font-size:16px; line-height:1;
+    display:flex; align-items:center; justify-content:center;
+    transition:transform .06s linear, background .06s linear;
+  }
+  #util .ubtn.on, #util .ubtn:active {
+    transform:scale(.92); background:rgba(255,216,96,.28); border-color:#ffd860;
+  }
+  #pauseScr {
+    display:none; position:fixed; inset:0; z-index:80;
+    background:rgba(10,6,16,.82); color:#fff;
+    flex-direction:column; align-items:center; justify-content:center;
+    text-align:center; padding-bottom:env(safe-area-inset-bottom, 0px);
+  }
+  #pauseScr.show { display:flex; }
+  #pauseScr h2 {
+    font-size:22px; color:#ffd860; font-weight:normal; letter-spacing:.35em; margin-bottom:18px;
+  }
+  #pauseScr .pbtn {
+    min-width:180px; min-height:48px; margin:6px; padding:0 18px;
+    background:#100810; border:2px solid #ffd860; color:#ffd860;
+    font-family:inherit; font-size:14px;
+    transition:transform .06s linear, background .06s linear;
+  }
+  #pauseScr .pbtn.on, #pauseScr .pbtn:active {
+    transform:scale(.92); background:rgba(255,216,96,.28);
+  }
+  audio { position:absolute; width:0; height:0; opacity:0; pointer-events:none; }
 </style>
     <meta property="og:title" content="砂王記 -SAND KING SAGA-">
     <meta property="og:description" content="スマホ・PCのブラウザで遊べる無料ゲームです。インストール不要！">
@@ -206,7 +243,7 @@
     <div class="keys">
       WASD・矢印 = 移動　　Q / E または ドラッグ = 視点<br>
       SPACE / J = 斬る　　F = 話す・調べる<br>
-      M = サウンド切替
+      M = 音切替　　Esc / P = ポーズ
     </div>
   </div>
 
@@ -225,16 +262,28 @@
 
 <!-- コントロールパネル：320x224のスケール対象外。画面下25%を占有する -->
 <div id="pad">
-  <div id="padL"><div id="stick"><div id="knob"></div></div></div>
+  <div id="padL"><div id="stick" aria-label="移動スティック"><div id="knob"></div></div></div>
   <div id="padC">
-    <div id="bL" class="tbtn">◀</div>
-    <div id="bR" class="tbtn">▶</div>
+    <div id="bL" class="tbtn" aria-label="左を見る">◀</div>
+    <div id="bR" class="tbtn" aria-label="右を見る">▶</div>
   </div>
   <div id="padR">
-    <div id="bB" class="tbtn">話</div>
-    <div id="bA" class="tbtn">斬</div>
+    <div id="bB" class="tbtn" aria-label="話す">話</div>
+    <div id="bA" class="tbtn" aria-label="斬る">斬</div>
   </div>
 </div>
+
+<div id="util">
+  <button type="button" id="bMute" class="ubtn" aria-label="ミュート">♪</button>
+  <button type="button" id="bPause" class="ubtn" aria-label="一時停止">Ⅱ</button>
+</div>
+<div id="pauseScr">
+  <h2>PAUSE</h2>
+  <button type="button" id="bResume" class="pbtn">つづける</button>
+</div>
+
+<audio id="bgmField" src="audio/dark-action-theme.m4a" loop preload="auto" playsinline webkit-playsinline></audio>
+<audio id="bgmBoss" src="audio/neon-rush.m4a" loop preload="auto" playsinline webkit-playsinline></audio>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
@@ -247,7 +296,13 @@
 /* ---------------------------------------------------------------- 定数 */
 const VW = 320, VH = 224;               // メガドライブ実解像度
 const WORLD = 150;                      // ワールド半径
+const LS_MUTE = 'tg.235.muted';
 const SND = { on:true };
+try { SND.on = localStorage.getItem(LS_MUTE) !== '1'; } catch(e){}
+const BGM_FILE = {
+  field: 'audio/dark-action-theme.m4a',
+  boss:  'audio/neon-rush.m4a'
+};
 
 /* ---------------------------------------------------------------- DOM */
 const $ = id => document.getElementById(id);
@@ -257,6 +312,8 @@ const elMsg=$('msg'), elMsgName=$('msgName'), elMsgText=$('msgText');
 const elHpb=$('hpb'), elHpt=$('hpt'), elLvl=$('lvl');
 const elQt=$('qt'), elQb=$('qb'), elToast=$('toast');
 const elArrow=$('arrow'), elCdist=$('cdist'), elPad=$('pad'), elSnd=$('snd');
+const elMute=$('bMute'), elPauseBtn=$('bPause'), elPauseScr=$('pauseScr'), elResume=$('bResume');
+const elBgmField=$('bgmField'), elBgmBoss=$('bgmBoss');
 
 /* ---------------------------------------------------------------- 入力デバイス判定 */
 // resize() がパネル高を必要とするため、ここで先に確定させる
@@ -264,14 +321,13 @@ const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
 if(isTouch) document.body.classList.add('touch');
 
 /* ---------------------------------------------------------------- 画面スケーリング */
-/* タッチ環境では画面下25%をコントロールパネルが占有し、残り75%にゲーム画面を収める。
-   縦持ちスマホでは0.5刻みスナップだと横が大きく余るため、実数スケールで幅を使い切る。 */
+/* コントロールパネルは端末を問わず画面下25%を占有し、残りにゲーム画面を収める。 */
 function resize(){
   const w = window.innerWidth, h = window.innerHeight;
-  const padH = isTouch ? Math.round(elPad.getBoundingClientRect().height) : 0;
-  const gh = Math.max(120, h - padH);            // ゲーム表示に使える高さ
+  const padH = Math.round(elPad.getBoundingClientRect().height);
+  const gh = Math.max(120, h - padH);
   let s = Math.min(w/VW, gh/VH);
-  if(!isTouch) s = s >= 1 ? Math.floor(s*2)/2 : s;   // PCは0.5刻みでドット感キープ
+  if(!isTouch) s = s >= 1 ? Math.floor(s*2)/2 : s;
   const ox = Math.floor((w - VW*s)/2), oy = Math.floor((gh - VH*s)/2);
   elStage.style.transform = `translate(${ox}px,${oy}px) scale(${s})`;
   elUI.style.transform    = `translate(${ox}px,${oy}px) scale(${s})`;
@@ -284,12 +340,19 @@ if(window.visualViewport) window.visualViewport.addEventListener('resize', resiz
 let actx=null, masterGain=null;
 function initAudio(){
   if(actx) return;
-  const AC = window.AudioContext || window.webkitAudioContext;
-  if(!AC) return;
-  actx = new AC();
-  masterGain = actx.createGain();
-  masterGain.gain.value = 0.22;
-  masterGain.connect(actx.destination);
+  try{
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if(!AC) return;
+    actx = new AC();
+    masterGain = actx.createGain();
+    masterGain.gain.value = 0.28;
+    masterGain.connect(actx.destination);
+  }catch(e){ actx = null; }
+}
+function resumeAC(){
+  if(actx && actx.state === 'suspended'){
+    try{ actx.resume(); }catch(e){}
+  }
 }
 // FM 2オペレータ
 function fm(freq, dur, ratio, index, vol, type){
@@ -336,16 +399,76 @@ const SE = {
   boss(){  noise(0.6,0.4,80); fm(60,0.7,1,10,0.30,'sawtooth'); }
 };
 
-/* --- BGM: ヒジャーズ音階の砂漠ループ --- */
-const BGM = { step:0, next:0, playing:false, mode:'field' };
-const HIJAZ = [0,1,4,5,7,8,11];  // D Eb F# G A Bb C#
-const BASE = 146.83;             // D3
+/* --- BGM: DOMの<audio>を pointerdown で再生。デコードできたら WebAudio へ切替 --- */
+const BGM = { step:0, next:0, playing:false, mode:'field', fileOk:false };
+const bgmBuf = { field:null, boss:null };
+let bgmNode = null, bgmDecodeStarted = false;
+const HIJAZ = [0,1,4,5,7,8,11];
+const BASE = 146.83;
 function nt(deg, oct){ const s = HIJAZ[((deg%7)+7)%7] + 12*(oct||0) + 12*Math.floor(deg/7); return BASE*Math.pow(2, s/12); }
 const FIELD_LEAD = [0,2,3,2,0,-1,0,null,3,4,3,2,0,null,null,null,
                     4,3,2,3,4,5,4,null,2,0,-1,0,null,null,null,null];
 const BOSS_LEAD  = [0,0,3,0,4,3,2,0,-1,-1,2,-1,3,2,1,-1];
+function htmlTrack(mode){ return (mode==='boss' ? elBgmBoss : elBgmField); }
+function htmlPauseAll(){
+  [elBgmField, elBgmBoss].forEach(a=>{ if(!a) return; a.pause(); });
+}
+function stopBuf(){
+  if(!bgmNode) return;
+  try{ bgmNode.src.stop(); }catch(e){}
+  try{ bgmNode.src.disconnect(); bgmNode.g.disconnect(); }catch(e){}
+  bgmNode = null;
+}
+function playBuf(mode){
+  const buf = bgmBuf[mode] || bgmBuf.field;
+  if(!actx || actx.state !== 'running' || !buf || !SND.on) return false;
+  stopBuf();
+  const src = actx.createBufferSource();
+  src.buffer = buf;
+  src.loop = true;
+  const g = actx.createGain();
+  g.gain.value = 0.55;
+  src.connect(g); g.connect(masterGain);
+  src.start(0);
+  bgmNode = { src, g };
+  BGM.fileOk = true;
+  htmlPauseAll();
+  return true;
+}
+function ensureBgmDecode(){
+  if(!actx || bgmDecodeStarted) return;
+  bgmDecodeStarted = true;
+  Object.keys(BGM_FILE).forEach(mode=>{
+    fetch(BGM_FILE[mode]).then(r=>{
+      if(!r.ok) throw new Error('bgm');
+      return r.arrayBuffer();
+    }).then(ab=> actx.decodeAudioData(ab.slice(0)))
+      .then(buf=>{
+        bgmBuf[mode] = buf;
+        const a = htmlTrack(BGM.mode);
+        const htmlOk = a && !a.paused;
+        if(BGM.playing && BGM.mode===mode && SND.on && !state.paused && !bgmNode && !htmlOk) playBuf(mode);
+      }).catch(()=>{});
+  });
+}
+function htmlPlay(mode){
+  const a = htmlTrack(mode);
+  const other = htmlTrack(mode==='boss' ? 'field' : 'boss');
+  if(other) other.pause();
+  if(!a || !SND.on) return;
+  a.loop = true;
+  a.muted = false;
+  a.volume = 0.55;
+  const p = a.play();
+  if(p && p.then){
+    p.then(()=>{ BGM.fileOk = true; }).catch(()=>{ BGM.fileOk = false; });
+  }
+}
 function bgmTick(){
-  if(!actx || !SND.on || !BGM.playing) return;
+  if(!actx || !SND.on || !BGM.playing || state.paused) return;
+  if(bgmNode) return;
+  const a = htmlTrack(BGM.mode);
+  if(a && !a.paused && !a.ended) return;
   const spb = BGM.mode==='boss' ? 0.115 : 0.145;
   while(actx.currentTime + 0.1 > BGM.next){
     const s = BGM.step;
@@ -366,11 +489,39 @@ function bgmTick(){
   }
 }
 function bgmStart(mode){
-  initAudio(); if(!actx) return;
-  BGM.mode = mode||'field'; BGM.playing = true;
-  BGM.step = 0; BGM.next = actx.currentTime + 0.05;
+  initAudio();
+  resumeAC();
+  ensureBgmDecode();
+  BGM.mode = mode || 'field';
+  BGM.playing = true;
+  BGM.step = 0;
+  if(actx) BGM.next = actx.currentTime + 0.05;
+  if(!SND.on || state.paused){ bgmStop(); BGM.playing = false; return; }
+  const cur = htmlTrack(BGM.mode);
+  if(cur && !cur.paused) return;
+  if(playBuf(BGM.mode)) return;
+  htmlPlay(BGM.mode);
 }
-function bgmStop(){ BGM.playing = false; }
+function bgmStop(){
+  BGM.playing = false;
+  BGM.fileOk = false;
+  stopBuf();
+  htmlPauseAll();
+}
+function unlockAudio(){
+  initAudio();
+  resumeAC();
+  if(actx){
+    try{
+      const b = actx.createBuffer(1, 1, 22050);
+      const src = actx.createBufferSource();
+      src.buffer = b;
+      src.connect(actx.destination);
+      src.start(0);
+    }catch(e){}
+  }
+  ensureBgmDecode();
+}
 
 /* ---------------------------------------------------------------- 地形 */
 function baseHeight(x,z){
@@ -697,6 +848,7 @@ const P = {
 };
 const pm = humanoid(M.cloth, M.cloth2, M.skin, true);
 const player = pm.g;
+player.rotation.y = P.yaw;
 scene.add(player);
 
 /* ---------------------------------------------------------------- NPC */
@@ -850,18 +1002,18 @@ const Q = {
   startTime: 0
 };
 const QTEXT = [
-  { t:'クエスト', b:'オアシスの老人に話しかけよう' },
-  { t:'① 水晶のかけら', b:'サバクサソリを倒して\n水晶を3つ集める  0/3' },
-  { t:'② 失われた石板', b:'東の遺跡へ向かい\n石板を手に入れる' },
-  { t:'③ 砂の王を討て',  b:'北西の砂の穴へ。\n砂の王ザルタを討伐せよ' },
-  { t:'④ 帰還',         b:'オアシスの老人に\n報告しよう' },
+  { t:'クエスト', b:'老人に話しかけよう\n（近づいて「話」）' },
+  { t:'① 水晶のかけら', b:'オアシスの外のサソリを斬り\n落ちた水晶を3つ拾う  0/3' },
+  { t:'② 失われた石板', b:'コンパスの東＝遺跡。\n柱の輪の中央で「話」' },
+  { t:'③ 砂の王を討て',  b:'コンパスの北西＝砂の穴。\nザルタに近づいて斬る' },
+  { t:'④ 帰還',         b:'オアシスの老人に報告\n（水辺は回復する）' },
   { t:'クリア！',        b:'砂は静けさを取り戻した' },
 ];
 function updQuest(){
   const q = QTEXT[Q.stage];
   elQt.textContent = q.t;
   let b = q.b;
-  if(Q.stage===1) b = `サバクサソリを倒して\n水晶を3つ集める  ${Q.crystals}/3`;
+  if(Q.stage===1) b = `オアシスの外へ。斬って\n水晶を拾う  ${Q.crystals}/3`;
   elQb.textContent = b;
 }
 function questTarget(){
@@ -908,38 +1060,79 @@ function toast(txt, col){
 
 /* ---------------------------------------------------------------- 入力 */
 const K = {};
-const state = { scene:'title' };   // title / play / over / clear
+const state = { scene:'title', paused:false };   // title / play / over / clear
 window.addEventListener('keydown', e=>{
   if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
   K[e.key.toLowerCase()] = true;
+  if(e.key === 'Escape' || e.key.toLowerCase() === 'p'){
+    if(state.scene==='play'){ togglePause(); e.preventDefault(); return; }
+  }
+  if(e.key.toLowerCase()==='m'){ toggleSound(); return; }
+  if(state.paused) return;
   if(e.key === 'Enter' || e.key === ' '){
     if(state.scene==='title'){ startGame(); return; }
     if(state.scene==='over'){ respawn(); return; }
     if(state.scene==='clear'){ location.reload(); return; }
   }
   if(msgOpen && (e.key===' '||e.key==='Enter'||e.key.toLowerCase()==='f'||e.key.toLowerCase()==='j')){ nextMsg(); }
-  if(e.key.toLowerCase()==='m'){ toggleSound(); }
 });
 window.addEventListener('keyup', e=>{ K[e.key.toLowerCase()] = false; });
 
+function syncMuteUI(){
+  elSnd.textContent = '[ M ] SOUND: ' + (SND.on?'ON':'OFF');
+  if(elMute){
+    elMute.textContent = SND.on ? '♪' : '×';
+    elMute.setAttribute('aria-label', SND.on ? 'ミュート' : 'ミュート解除');
+  }
+}
 function toggleSound(){
   SND.on = !SND.on;
-  elSnd.textContent = '[ M ] SOUND: ' + (SND.on?'ON':'OFF');
-  if(SND.on){ initAudio(); if(state.scene==='play') bgmStart(BGM.mode); } else bgmStop();
+  try { localStorage.setItem(LS_MUTE, SND.on ? '0' : '1'); } catch(e){}
+  syncMuteUI();
+  if(SND.on){
+    initAudio();
+    if(actx && actx.state === 'suspended') actx.resume();
+    if(state.scene==='play' && !state.paused) bgmStart(BGM.mode);
+  } else {
+    bgmStop();
+  }
 }
+function setPaused(v){
+  if(state.scene!=='play') return;
+  state.paused = !!v;
+  elPauseScr.classList.toggle('show', state.paused);
+  elPauseBtn.setAttribute('aria-label', state.paused ? '再開' : '一時停止');
+  if(state.paused){
+    stopBuf();
+    htmlPauseAll();
+  } else if(SND.on){
+    bgmStart(BGM.mode);
+  }
+}
+function togglePause(){ setPaused(!state.paused); }
 elSnd.addEventListener('click', toggleSound);
+syncMuteUI();
 
 /* --- ドラッグで視点／画面どこでもタップで送り（レターボックス部分も有効） --- */
 let dragging=false, lastX=0;
 // タッチパッド類の上では視点操作・送りを発火させない
-const onWidget = e => !!(e.target && e.target.closest && e.target.closest('#pad, #snd'));
-window.addEventListener('pointerdown', e=>{ if(onWidget(e)) return; dragging=true; lastX=e.clientX; });
+const onWidget = e => !!(e.target && e.target.closest && e.target.closest('#pad, #snd, #util, #pauseScr'));
+window.addEventListener('pointerdown', e=>{
+  unlockAudio();
+  if(onWidget(e) || state.paused) return;
+  if(state.scene==='title'){ startGame(); return; }
+  if(state.scene==='over'){ respawn(); return; }
+  dragging=true; lastX=e.clientX;
+});
 window.addEventListener('pointerup', ()=>{ dragging=false; });
 window.addEventListener('pointermove', e=>{
-  if(dragging){ P.yaw -= (e.clientX-lastX)*0.006; lastX=e.clientX; }
+  if(dragging){
+    P.yaw -= (e.clientX-lastX)*0.006; lastX=e.clientX;
+    if(state.scene==='play') player.rotation.y = P.yaw;
+  }
 });
 window.addEventListener('click', e=>{
-  if(onWidget(e)) return;
+  if(onWidget(e) || state.paused) return;
   if(state.scene==='title'){ startGame(); return; }
   if(state.scene==='over'){ respawn(); return; }
   if(state.scene==='clear'){ location.reload(); return; }
@@ -973,27 +1166,38 @@ const T = { mx:0, my:0, active:false, atk:false, talk:false, rotL:false, rotR:fa
 
   // 打感：押した瞬間に見た目が沈む＋離しで戻す（pointerdownで即発火＝遅延ゼロ）
   const bind=(el,on,off)=>{
-    el.addEventListener('pointerdown', e=>{ e.preventDefault(); el.classList.add('on'); on(); });
-    const up = e=>{ if(e) e.preventDefault(); el.classList.remove('on'); if(off) off(); };
+    if(!el) return;
+    el.addEventListener('pointerdown', e=>{
+      e.preventDefault();
+      try{ el.setPointerCapture(e.pointerId); }catch(_){}
+      el.classList.add('on');
+      if(navigator.vibrate) navigator.vibrate(15);
+      on(e);
+    });
+    const up = e=>{ if(e) e.preventDefault(); el.classList.remove('on'); if(off) off(e); };
     el.addEventListener('pointerup', up);
-    el.addEventListener('pointerleave', up);
-    el.addEventListener('pointercancel', ()=>up());
+    el.addEventListener('pointercancel', up);
   };
-  bind($('bA'), ()=>{ if(msgOpen) nextMsg(); else T.atk=true; });
-  bind($('bB'), ()=>{ if(msgOpen) nextMsg(); else T.talk=true; });
+  bind($('bA'), ()=>{ if(state.paused) return; if(msgOpen) nextMsg(); else T.atk=true; });
+  bind($('bB'), ()=>{ if(state.paused) return; if(msgOpen) nextMsg(); else T.talk=true; });
   bind($('bL'), ()=>T.rotL=true, ()=>T.rotL=false);
   bind($('bR'), ()=>T.rotR=true, ()=>T.rotR=false);
+  bind(elMute, ()=> toggleSound());
+  bind(elPauseBtn, ()=> togglePause());
+  bind(elResume, ()=> setPaused(false));
 })();
 
 /* ---------------------------------------------------------------- ゲーム進行 */
 function startGame(){
+  if(state.scene==='play') return;
   elTitle.style.display='none';
   elOver.style.display='none';
   elClear.style.display='none';
   state.scene = 'play';
+  state.paused = false;
+  elPauseScr.classList.remove('show');
   Q.startTime = performance.now();
-  initAudio();
-  if(actx && actx.state === 'suspended') actx.resume();
+  unlockAudio();
   bgmStart('field');
   updQuest();
   say('', '灼熱の砂海へようこそ。', 'オアシスの老人が\nあなたを待っている。');
@@ -1008,12 +1212,14 @@ function respawn(){
   if(Q.boss && Q.boss.alive){ Q.boss.hp = Q.boss.maxhp; }
 }
 function gameOver(){
-  P.dead = true; state.scene='over';
+  P.dead = true; state.scene='over'; state.paused=false;
+  elPauseScr.classList.remove('show');
   bgmStop(); SE.die();
   elOver.style.display='flex';
 }
 function gameClear(){
-  state.scene='clear';
+  state.scene='clear'; state.paused=false;
+  elPauseScr.classList.remove('show');
   bgmStop();
   [523,659,784,1047,1319].forEach((f,i)=>setTimeout(()=>fm(f,0.4,2,3,0.24),i*160));
   const sec = Math.floor((performance.now()-Q.startTime)/1000);
@@ -1026,37 +1232,47 @@ function talkNPC(){
   const n = '老 ハーサン';
   if(Q.stage===0){
     say(n, 'よく来た、旅の者。\nこの砂海は死にかけておる。',
-           '砂の王ザルタが目覚め\n泉が枯れはじめた。',
-           'まずは力を示せ。\nサバクサソリを狩り\n水晶のかけらを3つ持ってこい。');
+           '砂の王ザルタが目覚め、\n泉が枯れはじめた。',
+           'まずは力を示せ。\nオアシスの外に出よ。\nサバクサソリが徘徊しておる。',
+           '右上の金色の矢が目標だ。\nサソリへ近づけ、右の「斬」で倒せ。',
+           '倒すと青い水晶が落ちる。\n3つ拾ったら、またここへ戻れ。\n水際に立てば傷も癒えるぞ。');
     Q.stage = 1; updQuest();
   } else if(Q.stage===1){
     if(Q.crystals >= 3){
       say(n, 'おお、たしかに3つ。\nお前は本物だ。',
-             '次は東の遺跡へ行け。\n盗賊どもが\n「導きの石板」を守っておる。',
-             '石板なくして\nザルタの棲家は開かぬ。');
+             '次は東の遺跡へ行け。\nコンパスが東を指す。',
+             '柱が輪になった場所の\n真ん中に「導きの石板」がある。\n盗賊が守っておる、斬って近づけ。',
+             '石板の前で「話」を押せ。\n調べねば石は動かぬ。');
       Q.stage = 2; updQuest();
     } else {
-      say(n, `水晶はまだ ${Q.crystals}/3 じゃ。\n砂の上をよく探せ。`);
+      say(n, `水晶はまだ ${Q.crystals}/3 じゃ。`,
+             'オアシスの外、砂丘を歩け。\n右上の矢が一番近いサソリを指す。',
+             '近づいて「斬」。\n青い光が落ちたら拾え。\n足りんなら、また狩ってこい。');
     }
   } else if(Q.stage===2){
     if(Q.hasTablet){
       say(n, 'これが導きの石板か…!',
-             '北西の砂の穴。\nそこにザルタは眠る。',
-             'ゆけ。砂に呑まれるな。');
+             '次は北西じゃ。\nコンパスの矢が砂の穴を指す。',
+             '大きな窪みに、ザルタがおる。\n地が震えたらボスだ。\n胴へ近づいて「斬」を連打せよ。',
+             '危うければオアシスの水際へ走れ。\n立てば傷が戻る。');
       Q.stage = 3; updQuest();
     } else {
-      say(n, '東の遺跡じゃ。\n柱の輪の中央にある。');
+      say(n, 'まだ石板を持っておらぬな。',
+             '東へ行け。コンパスを見よ。\n十本の柱の輪、その中央じゃ。',
+             '盗賊を斬り、石板の前で「話」。\n中央に立たねば調べられぬぞ。');
     }
   } else if(Q.stage===3){
-    say(n, '北西の穴じゃ。\n地が震えたら、それが合図。');
+    say(n, '北西の砂の穴へ向かえ。\n右上の矢が穴を指しておる。',
+           '近づくと地面が鳴る。\nそれがザルタだ。逃げずに斬れ。',
+           '傷が深ければ、この水際へ戻れ。');
   } else if(Q.stage===4){
     say(n, 'やったな…\n砂が、静かになった。',
            '泉が戻ってきたぞ。\n見ろ、あの水の色を。',
-           'お前は砂海の英雄だ。\n\n— 砂王記 完 —');
+           'お前は砂海の英雄だ。\nいつでもこのオアシスへ戻れ。\n\n— 砂王記 完 —');
     Q.stage = 5; updQuest();
     setTimeout(gameClear, 600);
   } else {
-    say(n, 'ゆっくり休め、英雄よ。');
+    say(n, 'ゆっくり休め、英雄よ。\n水際は、いまでも傷を癒す。');
   }
 }
 
@@ -1088,26 +1304,34 @@ function worldToScreen(x,y,z){
 }
 
 /* ---------------------------------------------------------------- 攻撃 */
+function facingDot(dx, dz, yaw){
+  const d = Math.hypot(dx, dz);
+  if(d < 0.0001) return 1;
+  return (dx/d)*Math.sin(yaw) + (dz/d)*Math.cos(yaw);
+}
 function playerAttack(){
   if(P.atkT > 0 || P.dead || msgOpen) return;
   P.atkT = 0.42;
   SE.slash();
-  const reach = 3.6;
-  const fx = Math.sin(P.yaw), fz = Math.cos(P.yaw);
+  const reach = 4.2;
   let hitAny = false;
   for(const e of enemies){
     if(!e.alive) continue;
     const dx = e.x-P.x, dz = e.z-P.z;
     const d = Math.hypot(dx,dz);
     if(d > reach + e.t.hitR) continue;
-    const dot = (dx/d)*fx + (dz/d)*fz;
-    if(dot < 0.25) continue;
+    // 噛みつかれている距離は全方位。外側はカメラ向きかキャラ向きのどちらかで足りる
+    const close = d <= 2.8 + e.t.hitR*0.25;
+    if(!close){
+      const camDot  = facingDot(dx, dz, P.yaw);
+      const faceDot = facingDot(dx, dz, player.rotation.y);
+      if(camDot < 0.05 && faceDot < 0.05) continue;
+    }
     const dmg = 11 + P.lv*3 + Math.floor(Math.random()*5);
     damageEnemy(e, dmg);
     hitAny = true;
   }
   if(hitAny) SE.hit();
-  // 石板・拾い物も斬撃で反応なし（Fで取得）
 }
 function damageEnemy(e, dmg){
   e.hp -= dmg; e.hurtT = 0.22;
@@ -1148,7 +1372,7 @@ function damagePlayer(dmg){
 function interact(){
   if(msgOpen){ nextMsg(); return; }
   // NPC
-  if(Math.hypot(P.x-3, P.z-(-4)) < 5){ talkNPC(); return; }
+  if(Math.hypot(P.x-ELDER.x, P.z-ELDER.z) < 5.5){ talkNPC(); return; }
   // 石板
   if(!tabletTaken && Q.stage>=2 && Math.hypot(P.x-RUINS.x, P.z-RUINS.z) < 6){
     tabletTaken = true; Q.hasTablet = true;
@@ -1195,8 +1419,8 @@ function loop(now){
 
   bgmTick();
 
-  if(state.scene === 'play') update(dt);
-  updateCamera(dt);
+  if(state.scene === 'play' && !state.paused) update(dt);
+  if(!state.paused) updateCamera(dt);
   updatePops(dt);
 
   // 描画
@@ -1214,8 +1438,8 @@ function update(dt){
   if(K['s']||K['arrowdown'])  mf -= 1;
   if(K['a']||K['arrowleft'])  ms -= 1;
   if(K['d']||K['arrowright']) ms += 1;
-  if(K['q']||T.rotL) P.yaw += 2.2*dt;
-  if(K['e']||T.rotR) P.yaw -= 2.2*dt;
+  if(K['q']||T.rotL){ P.yaw += 2.2*dt; player.rotation.y = P.yaw; }
+  if(K['e']||T.rotR){ P.yaw -= 2.2*dt; player.rotation.y = P.yaw; }
   if(T.active){ mf += -T.my; ms += T.mx; }
 
   if((K[' ']||K['j']) && !msgOpen) { playerAttack(); }
@@ -1228,7 +1452,7 @@ function update(dt){
   if(mag > 0.01 && !msgOpen && !P.dead){
     mf/=Math.max(1,mag); ms/=Math.max(1,mag);
     const fx = Math.sin(P.yaw), fz = Math.cos(P.yaw);
-    const rx = Math.cos(P.yaw), rz = -Math.sin(P.yaw);
+    const rx = -Math.cos(P.yaw), rz = Math.sin(P.yaw);
     const sp = P.speed * (P.atkT>0 ? 0.45 : 1);
     let nx = P.x + (fx*mf + rx*ms) * sp * dt;
     let nz = P.z + (fz*mf + rz*ms) * sp * dt;
@@ -1323,7 +1547,8 @@ function update(dt){
       bob = Math.abs(Math.sin(e.wob*2.2))*0.18;
     }
     e.g.position.set(e.x, ey + bob, e.z);
-    e.g.rotation.y = e.yaw;
+    // サソリの頭はローカル+X。yaw は +Z 向きなので 90° 戻して頭を相手へ向ける
+    e.g.rotation.y = e.type==='scorpion' ? e.yaw - Math.PI/2 : e.yaw;
     if(e.hurtT > 0){
       e.hurtT -= dt;
       e.g.visible = Math.floor(e.hurtT*30)%2===0;
@@ -1421,23 +1646,17 @@ document.addEventListener('dblclick', e=> e.preventDefault(), { passive:false })
 // 長押しの選択メニュー
 document.addEventListener('contextmenu', e=> e.preventDefault());
 
-// WebAudio unlock：iOSは「ユーザー操作と同じイベント内」でしか AudioContext を起こせない
-(function unlockAudio(){
-  const go = ()=>{
-    initAudio();
-    if(actx && actx.state === 'suspended') actx.resume();
-    if(actx){
-      // 無音バッファを1つ流して確実に解錠する
-      const b = actx.createBuffer(1, 1, 22050);
-      const src = actx.createBufferSource(); src.buffer = b;
-      src.connect(actx.destination); src.start(0);
-      ['touchstart','touchend','pointerdown','click','keydown'].forEach(t=>
-        document.removeEventListener(t, go, true));
-    }
-  };
-  ['touchstart','touchend','pointerdown','click','keydown'].forEach(t=>
-    document.addEventListener(t, go, true));
-})();
+['pointerdown','keydown'].forEach(t=>
+  document.addEventListener(t, unlockAudio, true));
+
+document.addEventListener('visibilitychange', ()=>{
+  if(document.hidden){
+    stopBuf();
+    htmlPauseAll();
+  } else if(SND.on && state.scene==='play' && !state.paused){
+    bgmStart(BGM.mode);
+  }
+});
 
 /* ---------------------------------------------------------------- 起動 */
 resize();

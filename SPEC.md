@@ -58,17 +58,35 @@
 | 視点 | Q / E / ドラッグ | ◀ ▶ / 画面ドラッグ |
 | 斬る | SPACE / J | 斬 |
 | 話す・調べる | F | 話 |
-| 音切替 | M | 画面左上の SOUND 表示 |
+| 音切替 | M | 右上 ♪（状態は `tg.235.muted` に保存） |
+| ポーズ | Esc / P | 右上 Ⅱ ／ PAUSEの「つづける」 |
 
-## コントロールパネル（iOS要件・2026-09-12 新設）
+視点・移動の左右は画面の左右と一致する（スティック左＝画面左へ歩く。◀ / Q = 左を見る、▶ / E = 右を見る。2026-09-13 カメラ右軸で再固定）。
+
+## 音声
+
+| 種別 | 実体 | 備考 |
+|---|---|---|
+| フィールドBGM | `audio/dark-action-theme.m4a` | AAC-LC 96kbps。開始タップで unlock してループ |
+| ボスBGM | `audio/neon-rush.m4a` | 砂の王出現で切替。撃破後はフィールドへ戻す |
+| SE | WebAudio の YM2612 風 FM | ファイル失敗時の BGM フォールバックにも使う |
+| ミュート | 右上 ♪ と M | `localStorage` キー `tg.235.muted`（`'1'`=消音） |
+
+元ファイルは Opus-in-m4a で iOS Safari が再生できないため、AAC-LC に変換して `audio/` へ置いた。ルートの未参照 m4a は削除済み。
+
+## コントロールパネル（iOS要件・2026-09-12 新設／2026-09-13 追記）
 
 - ゲーム画面は **上75%**、コントロールパネルは **画面下25%** を固定占有
-  （`height: calc(25vh + env(safe-area-inset-bottom))`、下限 132px）
+  （`height: calc(25vh + env(safe-area-inset-bottom))`、下限 132px）。**PCでも常時表示**
 - パネルは 320×224 のスケール対象**外**。CSSピクセル実寸で親指に合わせる
 - 幅は3グループを % で固定配分（30 / 28 / 38 ＋ padding 4 = 100%）。**どの端末幅でも横に溢れない**
 - 高さは `height:min(100%, Nvw, Npx)` で行内に収める。横持ちでパネルが低くなっても潰れない
 - 全ボタン 44px 以上（Apple HIG）。320px幅端末はメディアクエリで配分を組み替えて維持
 - 縦持ちスマホでは 0.5刻みスナップを解除し、実数スケールで**横幅を使い切る**（PCはスナップ維持）
+- 右上にミュート（♪）とポーズ（Ⅱ）を **スケール対象外の固定ボタン** として置く（44px）。PAUSE 中も操作できる
+  （タッチ時はパネル直上、PCは画面右下。コンパス／HP枠と重ねない）
+- 仮想ボタンは Pointer Events + `setPointerCapture`。押下は `pointerdown` で即反応し、短い振動を返す
+- 明示ポーズあり。`visibilitychange` では BGM を止め、復帰時に再開する
 
 ## iOS対応
 
@@ -78,6 +96,7 @@
 - 長押しメニュー封じ（`contextmenu` / `-webkit-touch-callout:none`）
 - バウンススクロール封じ（`position:fixed` ＋ `overscroll-behavior:none`）
 - WebAudio unlock: 初回のユーザー操作と同一イベント内で `resume()` ＋ 無音バッファ再生
+- BGM は `<audio>` を **pointerdown** で `.play()` する（click だと iOS がジェスチャと認めない）
 - `orientationchange` / `visualViewport.resize` で再レイアウト
 
 ## クエスト進行
