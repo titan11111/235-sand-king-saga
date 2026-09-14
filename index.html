@@ -22,7 +22,9 @@
     -webkit-touch-callout:none; overscroll-behavior:none; touch-action:none;
   }
   #stage { position:absolute; left:0; top:0; transform-origin:top left; }
-  #gl { display:block; image-rendering:pixelated; image-rendering:crisp-edges; }
+  /* バッファは SS 倍で描き、表示は仮想解像度に固定する（縮小合成＝擬似AA）。
+     pixelated だと非整数倍で画素が不揃いになるため auto にしている。 */
+  #gl { display:block; width:320px; height:224px; image-rendering:auto; }
   #ui {
     position:absolute; left:0; top:0; width:320px; height:224px;
     transform-origin:top left; color:#fff; font-size:10px; line-height:12px;
@@ -331,6 +333,7 @@ function resize(){
   const ox = Math.floor((w - VW*s)/2), oy = Math.floor((gh - VH*s)/2);
   elStage.style.transform = `translate(${ox}px,${oy}px) scale(${s})`;
   elUI.style.transform    = `translate(${ox}px,${oy}px) scale(${s})`;
+  applyRes(s);
 }
 window.addEventListener('resize', resize);
 window.addEventListener('orientationchange', ()=> setTimeout(resize, 120));
@@ -549,12 +552,52 @@ function heightAt(x,z){
 /* ---------------------------------------------------------------- Three.js セットアップ */
 const renderer = new THREE.WebGLRenderer({ canvas:elCanvas, antialias:false });
 renderer.setPixelRatio(1);
-renderer.setSize(VW, VH, false);
 
+/* --- 内部解像度スケール SS ---------------------------------------------
+   VW/VH(320x224) はゲームロジックとUIレイアウトの単位として固定したまま、
+   実際に描くバッファだけを SS 倍にして端末の実ピクセルへ寄せる。
+   ・SS=1 … 従来（320x224 を約3.6倍に引き伸ばす＝輪郭がにじむ）
+   ・SS=2 … 640x448 を縮小合成
+   ・SS=3 … 960x672。iPhoneの実ピクセルとほぼ等倍＝いちばん締まる（既定）
+   harness実測(390px幅): SS1=61 / SS2=61 / SS3=59〜61 RAF/秒 で頭打ちなし。
+   ※ヘッドレスWebKit＝ソフトウェアGLの値。実機で落ちた場合は下の perfTick が
+     自動で1段下げるので、手で戻す必要はない。
+   ディザは vUv*(VW,VH) で刻んでいるので、SS を上げても市松の粒は
+   320x224 の大きさのまま＝メガドラ様式は崩れない。 */
+const SS_MAX = 3;
+let SS = 0;
+
+renderer.setSize(VW, VH, false);
 const rt = new THREE.WebGLRenderTarget(VW, VH, {
-  minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter,
+  minFilter: THREE.LinearFilter, magFilter: THREE.NearestFilter,
   format: THREE.RGBAFormat, depthBuffer:true, stencilBuffer:false
 });
+
+function applyRes(scale){
+  const dpr  = Math.min(window.devicePixelRatio || 1, 3);
+  const want = Math.max(1, Math.min(SS_MAX, Math.ceil(scale * dpr)));
+  if(want === SS) return;
+  SS = want;
+  renderer.setSize(VW*SS, VH*SS, false);
+  rt.setSize(VW*SS, VH*SS);
+  perfN = 0; perfSum = 0;               // 解像度が変わったら実測をやり直す
+}
+
+/* --- 重かったら自動で1段落とす（iPhone優先） --- */
+let perfN = 0, perfSum = 0;
+function perfTick(dt){
+  if(SS <= 1 || state.paused || document.hidden) return;
+  if(dt >= 0.05) return;                // タブ復帰などの飛び値（loopで0.05に丸められる）は捨てる
+  perfSum += dt; perfN++;
+  if(perfN < 90) return;
+  const avg = perfSum / perfN;
+  perfN = 0; perfSum = 0;
+  if(avg > 0.024){                      // 実測 42fps 未満が90フレーム続いたら降格
+    SS--;
+    renderer.setSize(VW*SS, VH*SS, false);
+    rt.setSize(VW*SS, VH*SS);
+  }
+}
 
 const scene = new THREE.Scene();
 const SKY_LOW  = new THREE.Color(0xe08040);
@@ -1418,6 +1461,7 @@ function loop(now){
   if(dt > 0.05) dt = 0.05;
 
   bgmTick();
+  perfTick(dt);
 
   if(state.scene === 'play' && !state.paused) update(dt);
   if(!state.paused) updateCamera(dt);
